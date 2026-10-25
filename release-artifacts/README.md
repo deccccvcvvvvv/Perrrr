@@ -2,9 +2,27 @@
 
 The APK is ~169 MB because Java 8/17/21/25, all renderer components and both LWJGL builds (3.3.3 and 3.4.3) are bundled.
 
-## Latest build: Round 6 (pointer fix, virtual-mouse switch, in-game menu, 26.3 MobileGlues config)
+## Latest build: Round 7 (phone-perfect pixel UI, download animation, in-game menu, clean recording)
 
-* GitHub Release `v1.0.3-round6` (pre-release, id 423532229, asset 675583105); the repo is private, so log in to download:
+* GitHub Release `v1.0.4-round7` (pre-release, id 423560733, asset 675703335); the repo is private, so log in to download:
+  https://github.com/JoooaoooDVD/Pro/releases/tag/v1.0.4-round7
+* File: `CSLauncherPro-1.0.4-round7-debug.apk`, 169,941,882 bytes
+* SHA-256: `8da3b7c5a7ce873a4ddd43c3af16ca263d2f3006706877cae09b275f0d305335` (checked again after downloading it back through the API)
+* Source: commit `8003651`
+* Signed with the shared debug key (cert SHA-256 `0ce5f955…068c66c`), so it installs as an update over earlier rounds.
+* Built outside CI. Gates passed:
+  * `:core:test` 135/135
+  * `:app:testDebugUnitTest` 3/3
+  * `lintDebug` (0 errors)
+  * `assembleDebug`
+  * SDL3 host test 73/73
+  * `tools/check_bundle_needed.py`: every DT_NEEDED resolves for all 169 shared libraries
+  * Paparazzi: 25 screenshots (17 real launcher screens at 800x360 dp and 720x320 dp, plus 8 kit/game-menu shots)
+* Not device-verified yet: clean recording (GL blit into the encoder), 26.3 with the MobileGlues error-filter config.
+
+## Round 6 build (pointer fix, virtual-mouse switch, in-game menu, 26.3 MobileGlues config)
+
+* GitHub Release `v1.0.3-round6` (pre-release, id 423532229, asset 675583105):
   https://github.com/JoooaoooDVD/Pro/releases/tag/v1.0.3-round6
 * File: `CSLauncherPro-1.0.3-round6-debug.apk`, 170,011,121 bytes
 * SHA-256: `3737e8174a2d5bf6b1c478b4bb5787887a139fece6a1c2b1d3317cdc87a6c115` (checked again after downloading it back through the API)
