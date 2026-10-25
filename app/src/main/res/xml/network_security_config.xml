@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything stays HTTPS-only except the official OptiFine download pages, whose HTTPS endpoint is unreliable
+     and whose download links are plain HTTP. Only the in-app OptiFine WebView/download uses these hosts. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">optifine.net</domain>
+        <domain includeSubdomains="true">adfoc.us</domain>
+    </domain-config>
+</network-security-config>

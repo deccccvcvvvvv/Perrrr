@@ -143,9 +143,24 @@ Device feedback:
 
 Gates (local, same steps as the CI `build` job): `:core:test` 107/107, `RealBundleTest`, `checkRegexIcu`, `checkAndroidApi`, `lintDebug`, `assembleDebug`.
 
+## Round 5 (26.3 libjvm load failure, OptiFine, modpacks, landscape pixel UI)
+
+Device feedback: Minecraft 26.3 stopped while loading `libjvm.so` from the Java 25 runtime, because `libc++_shared.so` was not found.
+
+| Change | Verification |
+|---|---|
+| The Java 25 runtime links against `libc++_shared.so`, which its archive does not contain. The APK now ships `lib/arm64-v8a/libc++_shared.so`, taken unmodified from NDK r27d (the toolchain the runtime was built with). `AndroidRuntimeEnv` preloads it before `libjvm.so`. | `ProvisioningTest` asserts the preload order. `tools/check_bundle_needed.py` resolves every `DT_NEEDED` of all 169 shared libraries in the APK + bundle. The packaged (debug-stripped) copy exports the same 2,498 dynamic symbols as the source copy. |
+| OptiFine: a headless installer (`content/OptiFine.kt`) re-implements OptiFine's own patcher (GDIFF + MD5 checks) and writes the same library/version layout as the official installer. The jar comes from optifine.net, through an in-app WebView of the official page (downloads accepted only from optifine.net, with the page's cookies) or through file import. It is never redistributed. | `OptiFineTest` (8 tests). Against the real `OptiFine_1.21.11_HD_U_J9.jar`, the output is byte-identical to the official `optifine.Patcher` for all 4,603 entries. |
+| Modpacks: a `.mrpack` reader/installer (`content/Modpack.kt`) with path-traversal protection, a download-host allow-list, sha1+sha512 verification and overrides. Packs come from the Modrinth browser or a file import, and each one becomes a new isolated profile (vanilla + Fabric/Quilt + files). Forge/NeoForge packs are refused with a clear message. | `ModpackTest` (8 tests, real local HTTP server). |
+| Catalog installs: `content/ContentInstall.kt` installs a file with its required dependencies (resolved transitively, each shared one only once). It skips dependencies that are already installed or were added manually, replaces the old file when another version of the same project is installed, and keeps a per-game-dir index used for the "Installed" badges. | `ContentInstallTest` (5 tests, real local HTTP server). |
+| Browser: Mods / Modpacks / Resource packs / Shaders. Results are filtered automatically for the selected profile's version and loader, with infinite scroll, project icons (memory + disk cache) and Installed badges. A vanilla profile gets a "Create Fabric profile" shortcut. Content lists show icons embedded in mods and packs, and world `icon.png`. | Compiles; lint passes. |
+| UI: landscape (`sensorLandscape`) with a left navigation rail. The default theme is a new Pixel theme with original 12×12 icons (`tools/ui/pixel_icons.py`), bevelled press-down buttons with haptics, pixel toggle/slider/tabs/text field/progress/dialog, and the Monocraft font (OFL-1.1). The background is an animated parallax pixel landscape coloured by time of day, throttled to ~20 fps and running only while resumed. Screens use staggered entrances, slide transitions and pop-in dialogs; reduced motion disables all animation. Settings v1→v2 migration switches existing users to the Pixel theme once. | `PixelIconDataTest` (3), the `RuntimeProfileAccountTest` migration test, and JVM-rendered landscape screenshots (Paparazzi, `./gradlew :app:recordPaparazziDebug -Ppaparazzi`, images in `app/src/test/snapshots/images/`). |
+
+Gates (local): `:core:test` 129/129 (0 skipped; includes `RealBundleTest` and the real-jar OptiFine comparison), `:app:testDebugUnitTest` 3/3, `checkRegexIcu`, `checkAndroidApi`, `lintDebug` (0 errors), `assembleDebug`, and the APK native-dependency check.
+
 ## Not verified (requires hardware)
 
-* Installing or launching the APK, Compose UI rendering, and theme appearance.
+* Compose UI on a real device (layouts were checked with JVM-rendered screenshots only), WebView behaviour on optifine.net, and live Modrinth installs.
 * The touch overlay, control editor gestures, physical keyboard/mouse/gamepad.
 * The EGL surface path in `libcsglfw` (GLFW and SDL3), the in-process JVM via `libcsbridge`, and any renderer backend.
 * Minecraft 26.x on a device (the SDL3 bridge is host-tested against mock EGL only).

@@ -5,7 +5,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Optional: `./gradlew :app:recordPaparazziDebug -Ppaparazzi` renders landscape screenshots of the pixel UI on the JVM.
+val withPaparazzi = providers.gradleProperty("paparazzi").isPresent
+if (withPaparazzi) apply(plugin = "app.cash.paparazzi")
+
 android {
+    if (withPaparazzi) sourceSets["test"].java.srcDir("src/screenshotTest/kotlin")
     namespace = "pro.cslauncher.app"
     compileSdk = 34
     ndkVersion = "26.3.11579264"

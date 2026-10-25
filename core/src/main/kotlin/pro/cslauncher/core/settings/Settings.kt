@@ -6,7 +6,8 @@ import pro.cslauncher.core.util.*
 import java.nio.file.Files
 import java.nio.file.Path
 
-@Serializable enum class ThemeChoice { DARK_GRAPHITE, GLASSMORPHISM }
+/** PIXEL is the blocky, Pocket-Edition-inspired default; the earlier smooth themes stay available. */
+@Serializable enum class ThemeChoice { PIXEL, DARK_GRAPHITE, GLASSMORPHISM }
 @Serializable enum class PerformancePreset { BATTERY_SAVER, BALANCED, PERFORMANCE, CUSTOM }
 @Serializable enum class CursorMode { DESKTOP, TOUCHPAD, IMMERSIVE, SMART }
 @Serializable enum class CursorShape { ARROW, CIRCLE, CROSSHAIR, DOT }
@@ -34,8 +35,10 @@ import java.nio.file.Path
 )
 
 @Serializable data class LauncherSettings(
-    val schemaVersion: Int = 1,
-    val theme: ThemeChoice = ThemeChoice.DARK_GRAPHITE,
+    val schemaVersion: Int = LauncherSettings.SCHEMA,
+    val theme: ThemeChoice = ThemeChoice.PIXEL,
+    /** Animated pixel landscape behind the launcher (paused when hidden, static with reduced motion). */
+    val animatedBackground: Boolean = true,
     val reduceTransparency: Boolean = false,
     val reduceMotion: Boolean = false,
     val downloadConcurrency: Int = 6,
@@ -51,14 +54,20 @@ import java.nio.file.Path
     val msaClientId: String = "",             // Azure app (client) id approved for Minecraft services; never a secret
     val verboseDiagnostics: Boolean = false,
     val keepLauncherLogsDays: Int = 14,
-)
+) {
+    companion object {
+        const val SCHEMA = 2
+        /** v1 → v2: the redesigned pixel UI becomes the theme once; users can switch back in Settings. */
+        fun migrate(s: LauncherSettings): LauncherSettings = if (s.schemaVersion >= SCHEMA) s else s.copy(schemaVersion = SCHEMA, theme = ThemeChoice.PIXEL)
+    }
+}
 
 class SettingsStore(private val file: Path) {
     private val _state = MutableStateFlow(read())
     val state: StateFlow<LauncherSettings> = _state.asStateFlow()
 
     private fun read(): LauncherSettings = runCatching {
-        if (!Files.isRegularFile(file)) LauncherSettings() else CsJson.decodeFromString(LauncherSettings.serializer(), pro.cslauncher.core.util.FsUtil.readText(file))
+        if (!Files.isRegularFile(file)) LauncherSettings() else LauncherSettings.migrate(CsJson.decodeFromString(LauncherSettings.serializer(), pro.cslauncher.core.util.FsUtil.readText(file)))
     }.getOrElse { e ->
         CsLog.w("Settings", "Settings file unreadable, keeping a copy and using defaults: ${e.message}")
         runCatching { Files.copy(file, file.resolveSibling("settings.corrupt-${System.currentTimeMillis()}.json")) }

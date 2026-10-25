@@ -17,7 +17,7 @@ import pro.cslauncher.app.install.JobStatus
 import pro.cslauncher.core.account.*
 import pro.cslauncher.core.activity.ActivityItem
 import pro.cslauncher.core.activity.ActivityKind
-import pro.cslauncher.core.content.LoaderInstaller
+import pro.cslauncher.core.content.*
 import pro.cslauncher.core.diagnostics.CrashAnalyzer
 import pro.cslauncher.core.diagnostics.FailureKind
 import pro.cslauncher.core.diagnostics.Diagnosis
@@ -27,8 +27,12 @@ import pro.cslauncher.core.perf.PerformanceAdvisor
 import pro.cslauncher.core.profile.*
 import pro.cslauncher.core.settings.LauncherSettings
 import pro.cslauncher.core.util.CsJson
+
 import java.io.File
 import java.nio.file.Files
+
+/** OptiFine profiles launch an "<mc>-OptiFine_<edition>" version. */
+val Profile.isOptiFine: Boolean get() = launchVersionId?.contains("-OptiFine_") == true
 
 enum class PlayState(val label: String) {
     INSTALL("Install"), DOWNLOADING("Downloading"), VERIFYING("Verifying"), PREPARING("Preparing"), LAUNCHING("Launching"),
@@ -330,6 +334,101 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun cancelMicrosoft() { msaJob?.cancel(); _msa.value = MsaState.Idle }
+
+    // ------------------------------------------------------------------ OptiFine, modpacks, catalog content
+    fun inspectOptiFine(jar: File): OptiFineJarInfo = OptiFineInstaller(s.dirs).inspect(jar.toPath())
+
+    /**
+     * Installs OptiFine from a jar the user obtained from optifine.net: vanilla first, then the headless patcher, then the
+     * resulting version is verified like any other. Attaches to [attachToProfileId] when it is a vanilla profile of the
+     * same Minecraft version, otherwise creates an "OptiFine <mc>" profile.
+     */
+    fun installOptiFine(jar: File, attachToProfileId: String? = null): Boolean {
+        val info = try { inspectOptiFine(jar) } catch (e: Exception) { toast(e.message ?: "Not an OptiFine jar"); return false }
+        val started = InstallManager.startTask(getApplication(), "optifine-${info.versionId}", "OptiFine ${info.minecraftVersion} ${info.edition}", { reload() }) {
+            val manifest = runCatching { s.manifests.load() }.getOrNull()
+            installVersion(info.minecraftVersion, manifest)
+            progress("Patching OptiFine", "Building the OptiFine library from your jar")
+            val res = OptiFineInstaller(s.dirs).install(jar.toPath()) { done, total -> progress("Patching OptiFine", "$done / $total classes", done, total) }
+            installVersion(res.versionId, manifest)
+            val existing = attachToProfileId?.let { id -> s.profiles.load().profiles.firstOrNull { it.id == id } }
+            val profile = if (existing != null && existing.versionId == info.minecraftVersion && (existing.loader?.type ?: LoaderType.VANILLA) == LoaderType.VANILLA)
+                existing.copy(launchVersionId = res.versionId, loader = null)
+            else Profile(name = "OptiFine ${info.minecraftVersion}", versionId = info.minecraftVersion, launchVersionId = res.versionId, iconKey = "bolt")
+            s.profiles.upsert(profile); s.profiles.select(profile.id)
+            s.activity.add(ActivityItem(ActivityKind.INSTALLED, "Installed OptiFine ${info.edition}", "Minecraft ${info.minecraftVersion} · ${profile.name}", profileId = profile.id), settings.value.recentActivityEnabled)
+            toast("OptiFine ${info.edition} is ready in “${profile.name}”")
+            true
+        }
+        if (!started) toast("This OptiFine version is already being installed")
+        return started
+    }
+
+    private suspend fun InstallManager.TaskScope.modpackWork(mrpack: File, iconKey: String) {
+        val index = Mrpack.read(mrpack.toPath())
+        val inst = ModpackInstaller(s.downloads)
+        inst.checkLoaderSupported(index)
+        val manifest = runCatching { s.manifests.load() }.getOrNull()
+        installVersion(index.minecraftVersion, manifest)
+        var profile = Profile(name = index.name.take(64), versionId = index.minecraftVersion, gameDirMode = GameDirMode.ISOLATED, iconKey = iconKey)
+        if (index.loader != LoaderType.VANILLA) {
+            progress("Installing ${index.loader.name.lowercase()} ${index.loaderVersion}")
+            val lv = index.loaderVersion ?: throw ModpackException("Modpack does not name a loader version")
+            val id = LoaderInstaller(s.http, s.dirs).install(index.loader, index.minecraftVersion, lv)
+            installVersion(id, manifest)
+            profile = profile.copy(loader = LoaderSpec(index.loader, lv), launchVersionId = id)
+        }
+        val gameDir = profile.gameDir(s.dirs)   // a brand-new instance folder owned by this job
+        try {
+            val r = inst.installFiles(mrpack.toPath(), gameDir) { p -> progress("Downloading modpack files", p) }
+            progress("Finishing", "${r.downloaded} files, ${r.overrides} overrides")
+        } catch (e: Throwable) {
+            gameDir.toFile().deleteRecursively(); throw e
+        }
+        s.profiles.upsert(profile); s.profiles.select(profile.id)
+        s.activity.add(ActivityItem(ActivityKind.INSTALLED, "Installed modpack ${index.name}", "${index.minecraftVersion} · ${index.loader.name.lowercase()}", profileId = profile.id), settings.value.recentActivityEnabled)
+        toast("Modpack “${index.name}” installed")
+    }
+
+    /** Installs a local .mrpack (picked with the file picker) as a new isolated profile. */
+    fun installModpack(mrpack: File): Boolean {
+        val index = try { Mrpack.read(mrpack.toPath()).also { ModpackInstaller(s.downloads).checkLoaderSupported(it) } } catch (e: Exception) { toast(e.message ?: "Not a valid .mrpack"); return false }
+        return InstallManager.startTask(getApplication(), "modpack-${index.name}-${index.versionId}", "Modpack ${index.name}", { reload() }) { modpackWork(mrpack, "chest"); true }
+            .also { if (!it) toast("${index.name} is already being installed") }
+    }
+
+    /** Downloads a modpack version from the catalog, then installs it like a local .mrpack. */
+    fun installModpackFromCatalog(file: CatalogFile, title: String): Boolean {
+        if (!file.fileName.endsWith(".mrpack")) { toast("Only Modrinth .mrpack modpacks can be installed automatically"); return false }
+        return InstallManager.startTask(getApplication(), "modpack-${file.projectId}-${file.versionName}", "Modpack $title", { reload() }) {
+            val dir = File(getApplication<Application>().cacheDir, "modpacks").toPath()
+            val task = file.task(dir)
+            progress("Downloading $title", file.fileName)
+            val r = s.downloads.downloadAll("modpack", listOf(task)) { p -> progress("Downloading $title", p) }
+            if (!r.ok) throw java.io.IOException(r.summary())
+            try { modpackWork(task.destination.toFile(), "chest") } finally { Files.deleteIfExists(task.destination) }
+            true
+        }.also { if (!it) toast("$title is already being installed") }
+    }
+
+    fun installedContent(profile: Profile, kind: ProjectKind): Map<String, IndexedContent> =
+        if (kind == ProjectKind.MODPACK) emptyMap() else runCatching { ContentIndex(profile.gameDir(s.dirs)).installed(kind) }.getOrDefault(emptyMap())
+
+    /** Installs a catalog file (with required dependencies for mods) into the profile's game directory. */
+    suspend fun installCatalogFile(catalog: ContentCatalog, title: String, file: CatalogFile, kind: ProjectKind, profile: Profile): Result<CatalogInstallResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val r = CatalogInstaller(s.downloads).install(catalog, title, file, kind, profile.gameDir(s.dirs), profile.versionId, profileLoaderId(profile, kind))
+            if (kind == ProjectKind.MOD) s.activity.add(ActivityItem(ActivityKind.MOD_IMPORTED, "Added $title", "${profile.name} · ${file.versionName}", profileId = profile.id), settings.value.recentActivityEnabled)
+            r
+        }
+    }
+
+    /** Loader facet for catalog queries: mod loader for mods, shader loader (iris/optifine) for shaders, none otherwise. */
+    fun profileLoaderId(profile: Profile, kind: ProjectKind): String? = when (kind) {
+        ProjectKind.MOD -> profile.loader?.type?.takeIf { it != LoaderType.VANILLA }?.name?.lowercase()
+        ProjectKind.SHADER -> if (profile.isOptiFine) "optifine" else null
+        else -> null
+    }
 
     // ------------------------------------------------------------------ settings & activity
     fun updateSettings(f: (LauncherSettings) -> LauncherSettings) = io { s.settings.update(f) }

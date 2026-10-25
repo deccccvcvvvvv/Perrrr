@@ -14,12 +14,14 @@ import pro.cslauncher.core.install.InstallStage
 import pro.cslauncher.core.install.Verifier
 
 enum class JobStatus { QUEUED, RUNNING, DONE, FAILED, CANCELLED }
-enum class JobKind { INSTALL, VERIFY_REPAIR }
+enum class JobKind { INSTALL, VERIFY_REPAIR, TASK }
 
 data class InstallJob(
     val versionId: String, val kind: JobKind, val status: JobStatus = JobStatus.QUEUED, val stage: String = "Queued",
     val message: String = "", val finishedFiles: Int = 0, val totalFiles: Int = 0, val bytes: Long = 0, val failedFiles: Int = 0,
     val startedAtMs: Long = System.currentTimeMillis(), val endedAtMs: Long? = null,
+    /** Display title; versionId doubles as the job key (a version id, or "task:<name>" for TASK jobs). */
+    val title: String = versionId,
 ) {
     val fraction: Float? get() = if (totalFiles > 0) finishedFiles.toFloat() / totalFiles else null
     val active get() = status == JobStatus.QUEUED || status == JobStatus.RUNNING
@@ -82,6 +84,61 @@ object InstallManager {
                 withContext(NonCancellable + Dispatchers.Main) { onFinished(ok) }
             }
         }
+    }
+
+    /** Progress reporter handed to [startTask] work. */
+    class TaskScope internal constructor(private val key: String) {
+        fun progress(stage: String, message: String = "", finished: Int? = null, total: Int? = null, bytes: Long? = null) =
+            set(key) { j -> j.copy(stage = stage, message = message, finishedFiles = finished ?: j.finishedFiles, totalFiles = total ?: j.totalFiles, bytes = bytes ?: j.bytes) }
+        fun progress(stage: String, p: pro.cslauncher.core.download.BatchProgress) =
+            progress(stage, p.currentFile ?: "", p.finishedFiles, p.totalFiles, p.downloadedBytes)
+
+        /** Installs (or completes/verifies) a version through the normal installer and writes the installed marker. */
+        suspend fun installVersion(versionId: String, manifest: pro.cslauncher.core.meta.VersionManifest?) {
+            val report = Services.installer.install(versionId, manifest) { ev ->
+                val p = ev.progress
+                set(key) { j -> j.copy(stage = "${ev.stage.title} · $versionId", message = ev.message, finishedFiles = p?.finishedFiles ?: j.finishedFiles,
+                    totalFiles = p?.totalFiles ?: j.totalFiles, bytes = p?.downloadedBytes ?: j.bytes, failedFiles = p?.failedFiles ?: j.failedFiles) }
+            }
+            if (!report.complete) throw java.io.IOException("Installing $versionId is incomplete: ${report.summary()}")
+            markInstalled(versionId)
+        }
+    }
+
+    /** Same marker the launcher view model uses to show a version as installed. */
+    fun markInstalled(versionId: String) {
+        val dir = Services.dirs.versionDir(versionId)
+        java.nio.file.Files.createDirectories(dir)
+        dir.resolve(".cs-installed").toFile().writeText(System.currentTimeMillis().toString())
+        java.nio.file.Files.deleteIfExists(dir.resolve(".cs-needs-repair"))
+    }
+
+    /**
+     * Runs arbitrary long work (modpack or OptiFine installation) under the same foreground service, progress and
+     * cancellation as installs. [work] returns true on success; exceptions are reported as the failure message.
+     */
+    @Synchronized fun startTask(ctx: Context, name: String, title: String, onFinished: (Boolean) -> Unit = {}, work: suspend TaskScope.() -> Boolean): Boolean {
+        val key = "task:$name"
+        if (running[key]?.isActive == true) return false
+        _jobs.update { it + (key to InstallJob(key, JobKind.TASK, title = title)) }
+        ContextCompat.startForegroundService(ctx, Intent(ctx, InstallService::class.java))
+        running[key] = scope.launch {
+            var ok = false
+            try {
+                set(key) { it.copy(status = JobStatus.RUNNING, stage = "Starting") }
+                ok = TaskScope(key).work()
+                set(key) { it.copy(status = if (ok) JobStatus.DONE else JobStatus.FAILED, endedAtMs = System.currentTimeMillis(), stage = if (ok) "Done" else it.stage) }
+            } catch (e: CancellationException) {
+                set(key) { it.copy(status = JobStatus.CANCELLED, message = "Cancelled", endedAtMs = System.currentTimeMillis()) }
+            } catch (e: Exception) {
+                pro.cslauncher.core.util.CsLog.w("Task", "$title failed: ${e.message}")
+                set(key) { it.copy(status = JobStatus.FAILED, message = e.message ?: e.toString(), endedAtMs = System.currentTimeMillis()) }
+            } finally {
+                synchronized(this@InstallManager) { running.remove(key) }
+                withContext(NonCancellable + Dispatchers.Main) { onFinished(ok) }
+            }
+        }
+        return true
     }
 
     @Synchronized fun cancel(versionId: String) { running[versionId]?.cancel() }

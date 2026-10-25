@@ -1,28 +1,31 @@
 package pro.cslauncher.app.ui.screens
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pro.cslauncher.app.ui.*
-import pro.cslauncher.app.ui.theme.CsCard
-import pro.cslauncher.app.ui.theme.LocalPalette
+import pro.cslauncher.app.ui.theme.*
 import pro.cslauncher.core.account.AccountType
 import pro.cslauncher.core.launch.FixAction
 import pro.cslauncher.core.perf.PerformanceAdvisor
 import pro.cslauncher.core.profile.RunOutcome
+
+private val SPLASHES = listOf(
+    "Pixel perfect!", "Now in landscape!", "OptiFine ready!", "Modpacks in one tap!", "Made for touch!", "Java on Android!",
+    "100% blocky!", "Shaders included*", "Fabric & Quilt!", "Craft anywhere!", "Also try a modpack!", "SDL3 inside!",
+)
 
 @Composable
 fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) -> Unit) {
@@ -33,170 +36,183 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
     val state = vm.playState(ui, jobs)
     val profile = ui.selected
     var showFailure by remember { mutableStateOf(false) }
+    var pickProfile by remember { mutableStateOf(false) }
+    val splash = remember { SPLASHES.random() }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-        // ---- top bar ----
-        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("CS Launcher Pro", color = p.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                Text("Minecraft: Java Edition", color = p.textMuted, fontSize = 13.sp)
-            }
-            val acc = ui.activeAccount
-            Surface(onClick = { onOpen(Overlay.Accounts) }, shape = RoundedCornerShape(50), color = p.secondarySurface) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.AccountCircle, null, tint = p.accent, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
-                    Text(acc?.username ?: "Add account", color = p.text, fontSize = 14.sp)
-                    if (acc?.type == AccountType.OFFLINE) { Spacer(Modifier.width(6.dp)); Text("offline", color = p.warning, fontSize = 11.sp) }
+    Row(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // ------------------------------------------------ left: title, profile, play
+        Column(Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 14.dp)) {
+                Column {
+                    PixelTitle("CS LAUNCHER", fontSize = 30.sp)
+                    Text("PRO · Java Edition", color = Color(0xFFBFC0C2), fontFamily = Monocraft, fontSize = 12.sp, style = TextStyle(shadow = PixelTextShadow))
                 }
+                SplashText(splash, Modifier.align(Alignment.BottomEnd).padding(end = 4.dp), fontSize = 13.sp)
             }
-        }
 
-        // ---- profile card ----
-        CsCard(Modifier.fillMaxWidth()) {
-            if (profile == null) {
-                Text("No profile yet", color = p.text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                Text("Create a profile to choose a Minecraft version.", color = p.textSecondary)
-                Spacer(Modifier.height(12.dp)); OutlinedButton(onClick = { onTab(Tab.PROFILES) }) { Text("Create profile", color = p.text) }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(profile.name, color = p.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        Text(listOfNotNull(profile.versionId, profile.loader?.let { "${it.type.name.lowercase().replaceFirstChar(Char::uppercase)} ${it.version}" }).joinToString(" · "), color = p.textSecondary)
+            PixelPanel(Modifier.fillMaxWidth().staggerIn(0)) {
+                if (profile == null) {
+                    PixelTitle("No profile yet", fontSize = 16.sp)
+                    Text("Create a profile to choose a Minecraft version.", color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                    Spacer(Modifier.height(10.dp))
+                    PixelButton("Create profile", { onTab(Tab.PROFILES) }, icon = "plus", style = PxStyle.PRIMARY)
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PixelSlot { PixelIcon(profileIcon(profile), size = 36.dp) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            PixelTitle(profile.name, fontSize = 17.sp)
+                            Text(profileSubtitle(profile), color = p.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        PixelIconButton("list", "Switch profile", { pickProfile = true })
+                        Spacer(Modifier.width(6.dp))
+                        PixelIconButton("edit", "Edit profile", { onOpen(Overlay.EditProfile(profile.id)) })
                     }
-                    IconButton(onClick = { onOpen(Overlay.EditProfile(profile.id)) }) { Icon(Icons.Filled.Edit, "Edit profile", tint = p.textSecondary) }
-                }
-                Spacer(Modifier.height(8.dp))
-                FlowRowCompat {
-                    Chip("Renderer: ${profile.rendererMemo?.rendererId?.let { "$it (remembered)" } ?: profile.rendererId}")
-                    Chip("Memory: ${profile.memoryMb?.let { "$it MB" } ?: "auto ${vm.recommendedHeapMb()} MB"}")
-                    if (profile.renderScale < 1f) Chip("Scale ${(profile.renderScale * 100).toInt()}%")
-                }
-                profile.lastRun?.let { r ->
                     Spacer(Modifier.height(8.dp))
-                    val (txt, col) = when (r.outcome) {
-                        RunOutcome.SUCCESS -> "Last session ended normally" to p.success
-                        RunOutcome.CRASHED -> "Last session crashed" to p.danger
-                        RunOutcome.FAILED_TO_START -> "Last launch failed${r.stage?.let { " at $it" } ?: ""}" to p.danger
-                        RunOutcome.KILLED -> "Last session was stopped" to p.warning
+                    FlowRowCompat {
+                        Chip("Renderer: ${profile.rendererMemo?.rendererId?.let { "$it ✓" } ?: profile.rendererId}")
+                        Chip("RAM ${profile.memoryMb?.let { "$it MB" } ?: "auto ${vm.recommendedHeapMb()} MB"}")
+                        if (profile.renderScale < 1f) Chip("Scale ${(profile.renderScale * 100).toInt()}%")
                     }
-                    Text("$txt · ${relativeTime(r.atMs)}", color = col, fontSize = 13.sp)
+                    profile.lastRun?.let { r ->
+                        val (txt, col) = when (r.outcome) {
+                            RunOutcome.SUCCESS -> "Last session ended normally" to p.success
+                            RunOutcome.CRASHED -> "Last session crashed" to p.danger
+                            RunOutcome.FAILED_TO_START -> "Last launch failed${r.stage?.let { " at $it" } ?: ""}" to p.danger
+                            RunOutcome.KILLED -> "Last session was stopped" to p.warning
+                        }
+                        Text("$txt · ${relativeTime(r.atMs)}", color = col, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
                 }
             }
-        }
 
-        // ---- play button ----
-        Spacer(Modifier.height(16.dp))
-        val job = profile?.let { jobs[it.effectiveVersionId] }?.takeIf { it.active }
-        val busy = state in setOf(PlayState.DOWNLOADING, PlayState.VERIFYING, PlayState.UPDATING, PlayState.PREPARING, PlayState.LAUNCHING, PlayState.PLAYING)
-        Button(onClick = { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = if (state == PlayState.LAUNCH_FAILED || state == PlayState.REPAIR_REQUIRED) p.danger.copy(alpha = 0.85f) else p.accent,
-                contentColor = p.background, disabledContainerColor = p.selected, disabledContentColor = p.text)) {
+            Spacer(Modifier.height(12.dp))
+            val job = profile?.let { jobs[it.effectiveVersionId] }?.takeIf { it.active }
+            val busy = state in setOf(PlayState.DOWNLOADING, PlayState.VERIFYING, PlayState.UPDATING, PlayState.PREPARING, PlayState.LAUNCHING, PlayState.PLAYING)
             val label = when (state) {
                 PlayState.DOWNLOADING, PlayState.UPDATING -> "${state.label} ${job?.fraction?.let { "${(it * 100).toInt()}%" } ?: ""}"
-                PlayState.PREPARING -> "Preparing · ${ui.launch?.state?.name?.lowercase()?.replace('_', ' ') ?: ""}"
-                PlayState.LAUNCH_FAILED -> "Launch Failed · Retry"
+                PlayState.PREPARING -> "Preparing…"
+                PlayState.LAUNCH_FAILED -> "Retry"
                 else -> state.label
             }
-            Text(label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        }
-        if (job != null) {
-            Spacer(Modifier.height(8.dp))
-            job.fraction?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth(), color = p.accent, trackColor = p.secondarySurface) }
-                ?: LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent, trackColor = p.secondarySurface)
-            Text("${job.stage} · ${job.finishedFiles}/${job.totalFiles} files · ${formatBytes(job.bytes)}", color = p.textSecondary, fontSize = 13.sp)
-        }
-        ui.failure?.let { f ->
-            Spacer(Modifier.height(8.dp))
-            CsCard(Modifier.fillMaxWidth().clickable { showFailure = true }) {
-                Text(f.title, color = p.danger, fontWeight = FontWeight.Medium)
-                Text(f.diagnoses.firstOrNull()?.explanation ?: f.issues.firstOrNull()?.message ?: "See details", color = p.textSecondary, fontSize = 13.sp, maxLines = 3)
-                Text("Tap for details and fixes", color = p.accent, fontSize = 13.sp)
-            }
-        }
-
-        // ---- quick actions ----
-        SectionTitle("Quick actions")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QuickAction(Icons.Filled.Build, "Mods", Modifier.weight(1f)) { onOpen(Overlay.Content(ContentSection.MODS)) }
-            QuickAction(Icons.Filled.Star, "Packs", Modifier.weight(1f)) { onOpen(Overlay.Content(ContentSection.RESOURCE_PACKS)) }
-            QuickAction(Icons.Filled.Place, "Worlds", Modifier.weight(1f)) { onOpen(Overlay.Content(ContentSection.WORLDS)) }
-            QuickAction(Icons.Filled.Info, "Logs", Modifier.weight(1f)) { onOpen(Overlay.Logs) }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QuickAction(Icons.Filled.Create, "Controls", Modifier.weight(1f)) { ControlEditorActivity.open(vm.getApplication(), profile?.controlLayoutId ?: "default-touch") }
-            QuickAction(Icons.Filled.Refresh, "Verify", Modifier.weight(1f)) { profile?.let { vm.repair(it.effectiveVersionId) } }
-            QuickAction(Icons.Filled.Face, "Recordings", Modifier.weight(1f)) { onOpen(Overlay.Content(ContentSection.RECORDINGS)) }
-            QuickAction(Icons.Filled.Share, "Screens", Modifier.weight(1f)) { onOpen(Overlay.Content(ContentSection.SCREENSHOTS)) }
-        }
-
-        // ---- performance summary ----
-        SectionTitle("Performance")
-        CsCard(Modifier.fillMaxWidth()) {
-            val f = vm.facts
-            InfoRow("Preset", settings.performancePreset.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase))
-            InfoRow("Device memory", "${f.totalRamMb} MB${if (f.lowRamDevice) " (low-RAM device)" else ""}")
-            InfoRow("Game memory", "${profile?.memoryMb ?: vm.recommendedHeapMb()} MB (safe max ${vm.maxHeapMb()} MB)")
-            InfoRow("Graphics", "OpenGL ES ${vm.device.glesVersion / 10}.${vm.device.glesVersion % 10} · Vulkan ${vm.device.vulkanApi ?: "not available"}")
-            PerformanceAdvisor.recommendations(f, profile?.memoryMb ?: vm.recommendedHeapMb(), if (profile?.lastRun?.outcome == RunOutcome.CRASHED) 1 else 0, 0).take(2).forEach {
-                Text("• ${it.title}: ${it.detail}", color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-            }
-        }
-
-        // ---- recent activity ----
-        SectionTitle("Recent activity")
-        if (!settings.recentActivityEnabled) Text("Recent activity is turned off (Settings › Privacy).", color = p.textMuted, fontSize = 13.sp)
-        else if (ui.activity.isEmpty()) Text("Nothing yet.", color = p.textMuted, fontSize = 13.sp)
-        else CsCard(Modifier.fillMaxWidth()) {
-            ui.activity.take(6).forEach { a ->
-                Row(Modifier.padding(vertical = 4.dp)) {
-                    Column(Modifier.weight(1f)) { Text(a.title, color = p.text, fontSize = 14.sp); Text(a.detail, color = p.textSecondary, fontSize = 12.sp, maxLines = 1) }
-                    Text(relativeTime(a.atMs), color = p.textMuted, fontSize = 12.sp)
+            val playStyle = when (state) { PlayState.LAUNCH_FAILED, PlayState.REPAIR_REQUIRED -> PxStyle.DANGER; else -> PxStyle.PRIMARY }
+            val playIcon = when (state) { PlayState.INSTALL -> "download"; PlayState.REPAIR_REQUIRED -> "refresh"; PlayState.NO_PROFILE -> "plus"; else -> "play" }
+            PixelButton(label.uppercase(), { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.fillMaxWidth().staggerIn(1),
+                style = playStyle, enabled = !busy, icon = playIcon, height = 64.dp, fontSize = 20.sp)
+            AnimatedVisibility(job != null || state == PlayState.PREPARING, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column(Modifier.padding(top = 10.dp)) {
+                    PixelProgress(job?.fraction)
+                    Text(if (job != null) "${job.stage} · ${job.finishedFiles}/${job.totalFiles} files · ${formatBytes(job.bytes)}"
+                         else ui.launch?.state?.name?.lowercase()?.replace('_', ' ')?.replaceFirstChar(Char::uppercase) ?: "Preparing",
+                        color = p.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            ui.failure?.let { f ->
+                Spacer(Modifier.height(10.dp))
+                PixelPanel(Modifier.fillMaxWidth().clickable { showFailure = true }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PixelIcon("warning", size = 20.dp); Spacer(Modifier.width(8.dp))
+                        Text(f.title, color = p.danger, fontFamily = Monocraft, fontSize = 13.sp)
+                    }
+                    Text(f.diagnoses.firstOrNull()?.explanation ?: f.issues.firstOrNull()?.message ?: "See details", color = p.textSecondary, fontSize = 12.sp, maxLines = 3, modifier = Modifier.padding(top = 4.dp))
+                    Text("Tap for details and fixes", color = p.accent, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+            Spacer(Modifier.height(12.dp))
         }
-        Spacer(Modifier.height(24.dp))
+
+        // ------------------------------------------------ right: account, quick actions, info
+        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+            val acc = ui.activeAccount
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                if (acc?.type == AccountType.OFFLINE) { Badge("OFFLINE", p.warning); Spacer(Modifier.width(8.dp)) }
+                PixelButton(acc?.username ?: "Add account", { onOpen(Overlay.Accounts) }, icon = if (acc == null) "user_add" else "head", height = 40.dp)
+            }
+            SectionTitle("Quick actions")
+            val actions = listOf<Triple<String, String, () -> Unit>>(
+                Triple("pickaxe", "Mods") { onOpen(Overlay.Content(ContentSection.MODS)) },
+                Triple("painting", "Packs") { onOpen(Overlay.Content(ContentSection.RESOURCE_PACKS)) },
+                Triple("world", "Worlds") { onOpen(Overlay.Content(ContentSection.WORLDS)) },
+                Triple("chest", "Modpacks") { onTab(Tab.BROWSE) },
+                Triple("gamepad", "Controls") { ControlEditorActivity.open(vm.getApplication(), profile?.controlLayoutId ?: "default-touch") },
+                Triple("bolt", "OptiFine") { onOpen(Overlay.OptiFine(profile?.id)) },
+                Triple("record", "Videos") { onOpen(Overlay.Content(ContentSection.RECORDINGS)) },
+                Triple("image", "Shots") { onOpen(Overlay.Content(ContentSection.SCREENSHOTS)) },
+                Triple("shield", "Verify") { profile?.let { vm.repair(it.effectiveVersionId) } ?: Unit },
+                Triple("book", "Logs") { onOpen(Overlay.Logs) },
+            )
+            actions.chunked(5).forEachIndexed { row, chunk ->
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    chunk.forEachIndexed { i, (icon, lbl, act) -> PixelTile(icon, lbl, act, Modifier.weight(1f).staggerIn(2 + row * 5 + i)) }
+                }
+            }
+
+            SectionTitle("Performance")
+            PixelPanel(Modifier.fillMaxWidth()) {
+                val f = vm.facts
+                InfoRow("Preset", settings.performancePreset.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase))
+                InfoRow("Device memory", "${f.totalRamMb} MB${if (f.lowRamDevice) " (low-RAM)" else ""}")
+                InfoRow("Game memory", "${profile?.memoryMb ?: vm.recommendedHeapMb()} MB (max ${vm.maxHeapMb()} MB)")
+                InfoRow("Graphics", "GLES ${vm.device.glesVersion / 10}.${vm.device.glesVersion % 10} · Vulkan ${vm.device.vulkanApi ?: "n/a"}")
+                PerformanceAdvisor.recommendations(f, profile?.memoryMb ?: vm.recommendedHeapMb(), if (profile?.lastRun?.outcome == RunOutcome.CRASHED) 1 else 0, 0).take(2).forEach {
+                    Text("• ${it.title}: ${it.detail}", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+
+            SectionTitle("Recent activity")
+            when {
+                !settings.recentActivityEnabled -> Text("Recent activity is turned off (Settings › Privacy).", color = p.textMuted, fontSize = 12.sp)
+                ui.activity.isEmpty() -> Text("Nothing yet.", color = p.textMuted, fontSize = 12.sp)
+                else -> PixelPanel(Modifier.fillMaxWidth()) {
+                    ui.activity.take(6).forEach { a ->
+                        Row(Modifier.padding(vertical = 4.dp)) {
+                            Column(Modifier.weight(1f)) { Text(a.title, color = p.text, fontSize = 13.sp, maxLines = 1); Text(a.detail, color = p.textSecondary, fontSize = 11.sp, maxLines = 1) }
+                            Text(relativeTime(a.atMs), color = p.textMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+
+    if (pickProfile) PixelDialog({ pickProfile = false }, "Choose profile", widthFraction = 0.6f, buttons = {
+        PixelButton("Manage", { pickProfile = false; onTab(Tab.PROFILES) }, icon = "list")
+        PixelButton("Close", { pickProfile = false })
+    }) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            ui.profiles.profiles.forEach { pr ->
+                PixelButton("${pr.name}  ·  ${profileSubtitle(pr)}", { vm.select(pr.id); pickProfile = false }, Modifier.fillMaxWidth(),
+                    style = if (pr.id == profile?.id) PxStyle.SELECTED else PxStyle.NORMAL, icon = profileIcon(pr))
+            }
+        }
     }
 
     if (showFailure) ui.failure?.let { f ->
-        AlertDialog(onDismissRequest = { showFailure = false }, containerColor = p.elevated, titleContentColor = p.text, textContentColor = p.textSecondary,
-            title = { Text(f.title) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    f.issues.forEach { i -> Text("• [${i.stage.name.lowercase()}] ${i.message}", modifier = Modifier.padding(bottom = 6.dp)) }
-                    f.diagnoses.forEach { d ->
-                        Text("${d.kind.title} (${(d.confidence * 100).toInt()}%)", color = p.text, fontWeight = FontWeight.Medium)
-                        Text(d.explanation, fontSize = 13.sp)
-                        d.evidence.take(3).forEach { Text("  › $it", fontSize = 11.sp, color = p.textMuted, maxLines = 2) }
-                        d.repairs.forEach { r -> Text("Suggested: ${r.description}", fontSize = 13.sp, color = p.accent) }
-                        Spacer(Modifier.height(8.dp))
-                    }
+        val fix = f.issues.firstOrNull { it.fix != FixAction.NONE }?.fix
+        PixelDialog({ showFailure = false }, f.title, buttons = {
+            PixelButton("Dismiss", { showFailure = false; vm.dismissFailure() })
+            PixelButton(when (fix) { null, FixAction.NONE -> "Open logs"; FixAction.SIGN_IN -> "Sign in"; FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT -> "Runtimes"; FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> "Repair"; else -> "Edit profile" }, {
+                showFailure = false
+                when (fix) {
+                    FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> ui.selected?.let { vm.repair(it.effectiveVersionId) }
+                    FixAction.SIGN_IN -> onOpen(Overlay.Accounts)
+                    FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT, FixAction.FREE_STORAGE -> onTab(Tab.SETTINGS)
+                    FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> ui.selected?.let { onOpen(Overlay.EditProfile(it.id)) }
+                    else -> onOpen(Overlay.Logs)
                 }
-            },
-            confirmButton = {
-                val fix = f.issues.firstOrNull { it.fix != FixAction.NONE }?.fix
-                TextButton(onClick = {
-                    showFailure = false
-                    when (fix) {
-                        FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> ui.selected?.let { vm.repair(it.effectiveVersionId) }
-                        FixAction.SIGN_IN -> onOpen(Overlay.Accounts)
-                        FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT -> onTab(Tab.SETTINGS)
-                        FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> ui.selected?.let { onOpen(Overlay.EditProfile(it.id)) }
-                        FixAction.FREE_STORAGE -> onTab(Tab.SETTINGS)
-                        else -> onOpen(Overlay.Logs)
-                    }
-                }) { Text(when (fix) { null, FixAction.NONE -> "Open logs"; FixAction.SIGN_IN -> "Sign in"; FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT -> "Open runtimes & components"; FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> "Repair"; else -> "Edit profile" }, color = p.accent) }
-            },
-            dismissButton = { TextButton(onClick = { showFailure = false; vm.dismissFailure() }) { Text("Dismiss", color = p.textSecondary) } })
-    }
-}
-
-@Composable
-private fun QuickAction(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
-    val p = LocalPalette.current
-    CsCard(modifier.clickable(onClick = onClick)) {
-        Icon(icon, null, tint = p.accent, modifier = Modifier.size(22.dp).align(Alignment.CenterHorizontally))
-        Text(label, color = p.text, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp), maxLines = 1)
+            }, style = PxStyle.PRIMARY)
+        }) {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                f.issues.forEach { i -> Text("• [${i.stage.name.lowercase()}] ${i.message}", color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp)) }
+                f.diagnoses.forEach { d ->
+                    Text("${d.kind.title} (${(d.confidence * 100).toInt()}%)", color = p.text, fontFamily = Monocraft, fontSize = 13.sp)
+                    Text(d.explanation, color = p.textSecondary, fontSize = 13.sp)
+                    d.evidence.take(3).forEach { Text("  › $it", fontSize = 11.sp, color = p.textMuted, maxLines = 2) }
+                    d.repairs.forEach { r -> Text("Suggested: ${r.description}", fontSize = 13.sp, color = p.accent) }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
     }
 }

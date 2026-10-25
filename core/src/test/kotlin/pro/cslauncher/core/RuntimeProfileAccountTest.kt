@@ -107,7 +107,16 @@ class RuntimeProfileAccountTest {
         val reloaded = SettingsStore(f).state.value
         assertEquals(ThemeChoice.GLASSMORPHISM, reloaded.theme); assertTrue(reloaded.reduceMotion)
         Files.writeString(f, "{broken")
-        assertEquals(ThemeChoice.DARK_GRAPHITE, SettingsStore(f).state.value.theme)
+        assertEquals(ThemeChoice.PIXEL, SettingsStore(f).state.value.theme)
+    }
+
+    @Test fun settingsV1MigratesOnceToPixelThemeAndKeepsOtherValues() {
+        val f = tempDir().resolve("settings.json")
+        Files.writeString(f, """{"schemaVersion":1,"theme":"GLASSMORPHISM","reduceMotion":true,"downloadConcurrency":3}""")
+        val s = SettingsStore(f).state.value
+        assertEquals(ThemeChoice.PIXEL, s.theme); assertEquals(2, s.schemaVersion); assertTrue(s.reduceMotion); assertEquals(3, s.downloadConcurrency)
+        SettingsStore(f).update { it.copy(theme = ThemeChoice.DARK_GRAPHITE) }
+        assertEquals(ThemeChoice.DARK_GRAPHITE, SettingsStore(f).state.value.theme, "a choice made after migration is kept")
     }
 
     @Test fun memoryAdvisorNeverUsesAllRam() {

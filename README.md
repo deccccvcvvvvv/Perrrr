@@ -7,12 +7,10 @@ and a small C native layer (its own GLFW implementation plus an in-process JVM b
 
 | | |
 |---|---|
-| Launcher core | ✅ 93/93 unit tests pass. ✅ A real install + repair + launch of Minecraft 1.18.2 to the title screen succeeded on a desktop host using the same core code |
-| Android APK | ✅ Builds (debug, signed with the debug key, and an R8 release build), 0 lint errors, 0 Android API-level violations, native libraries for arm64-v8a / armeabi-v7a / x86_64 |
-| On a device | ⚠️ **Never installed or run**: no emulator or device was available on the build host |
-| Playing on Android | ⛔ Needs an Android-built Java runtime, an LWJGL 3 Android pack and a renderer pack (GL4ES or Mesa Zink). None are bundled. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) §5 |
-
-The built APK is in `release-artifacts/CSLauncherPro-1.0.0-debug.apk` (SHA-256 in the `.sha256` file next to it).
+| Launcher core | ✅ All `:core:test` unit/integration tests pass (see `docs/BUILD_AND_TEST_REPORT.md`). Real install + launch to the title screen verified on a desktop host with the same core code |
+| Android APK | ✅ Builds with 0 lint errors and 0 Android API-level violations. Published as GitHub Release assets (too large for the repository) |
+| Bundled | Java 8/17/21/25 runtimes, LWJGL 3.3 + 3.4 Android natives, GL4ES, MobileGlues, `libc++_shared` for Java 25 — no manual imports |
+| On a device | ✅ 1.21.11 reaches the game (Round 4 device report). Minecraft 26.3 (Java 25/SDL3) failed to load `libjvm.so` before Round 5; the fix (bundled `libc++_shared.so`) is not yet device-confirmed |
 
 ## Features (implemented in code)
 * **Installation:**
@@ -50,10 +48,16 @@ The built APK is in `release-artifacts/CSLauncherPro-1.0.0-debug.apk` (SHA-256 i
   * Redacted shareable reports.
   * Safe repairs only; user data is never deleted.
 * **Accounts:** Microsoft device-code sign-in (bring your own Azure client ID), Keystore-encrypted tokens, and clearly labelled offline profiles.
+* **OptiFine:** opens the official optifine.net page in-app and captures the jar you download (or import a jar). It is patched locally by a headless re-implementation of OptiFine's own installer; the output is byte-identical to the official installer for 1.21.11 HD U J9. OptiFine is never redistributed.
+* **Modpacks:** browse and install Modrinth modpacks (`.mrpack`), or import a `.mrpack` file. Each pack becomes its own profile with Minecraft, its Fabric/Quilt loader and every file installed and hash-checked.
+* **Mod browser:** Mods / Modpacks / Resource packs / Shaders. Results are filtered automatically for the selected profile's version and loader. Shows project icons and an "Installed" badge. Required dependencies are installed automatically, skipping ones already present (including manually added copies). Installing another version replaces the old file.
 * **UI:**
-  * Portrait, with Home / Profiles / Browse / Downloads / Settings.
-  * Dark Graphite and Glassmorphism themes.
-  * Reduced motion/transparency respected.
+  * Landscape, built for touch: a left navigation rail with Home / Profiles / Browse / Downloads / Settings.
+  * Default **Pixel** theme in the spirit of the Pocket Edition menus. Original 12×12 pixel icons, bevelled 3D buttons that sink when pressed, with haptics. Monocraft pixel font (OFL).
+  * Animated parallax pixel landscape coloured by time of day (stars at night). Throttled to ~20 fps and paused when the app is not visible.
+  * Staggered list entrances, sliding screens and pop-in dialogs.
+  * Reduced motion turns every animation off. Dark Graphite and Glassmorphism remain available as themes.
+  * Mod, resource-pack and world icons are read from the files themselves.
 
 ## Build
 

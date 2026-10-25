@@ -28,6 +28,7 @@
 | shaderc + glslang + SPIRV-Tools + SPIRV-Headers | shaderc v2026.2 (dependencies at the revisions in its `DEPS`) | Apache-2.0; glslang BSD-3-Clause/MIT-style; SPIRV-Headers MIT | `libshaderc.so`: GLSL → SPIR-V for Minecraft 26.3's shader pipeline (also exports glslang's and SPIRV-Tools' C APIs, as upstream LWJGL does) |
 | SPIRV-Cross | vulkan-sdk-1.4.341.0 | Apache-2.0 | `libspirv-cross.so`: SPIR-V → GLSL for Minecraft 26.3 |
 | XZ for Java | 1.10 | 0BSD | `.tar.xz` runtime extraction |
+| Monocraft font (`res/font/monocraft*.ttf`) | v4.2.1 (Regular, Bold), unmodified | SIL OFL-1.1 (licence text shipped in `assets/licenses/Monocraft-OFL-1.1.txt`) | pixel-style titles, buttons and labels |
 | LLVM libc++ (`libc++_shared.so`, arm64-v8a) | Android NDK r27d (27.3.13750724), unmodified | Apache-2.0 WITH LLVM-exception | C++ runtime required by the Java 25 runtime (built with NDK r27d); see `app/src/main/jniLibs/README.md` |
 
 All Kotlin and C sources of the launcher itself were written for this project; no launcher code was copied from other launchers.

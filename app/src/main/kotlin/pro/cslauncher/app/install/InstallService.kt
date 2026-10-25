@@ -35,7 +35,7 @@ class InstallService : Service() {
                     val active = jobs.values.filter { it.active }
                     if (active.isEmpty()) { delay(500); if (!InstallManager.anyActive()) { ServiceCompat.stopForeground(this@InstallService, ServiceCompat.STOP_FOREGROUND_REMOVE); stopSelf() }; return@collectLatest }
                     val j = active.first()
-                    nm.notify(7, build("Installing ${j.versionId}" + if (active.size > 1) " (+${active.size - 1})" else "", "${j.stage} · ${j.finishedFiles}/${j.totalFiles}", j.fraction))
+                    nm.notify(7, build((if (j.kind == JobKind.TASK) j.title else "Installing ${j.title}") + if (active.size > 1) " (+${active.size - 1})" else "", "${j.stage} · ${j.finishedFiles}/${j.totalFiles}", j.fraction))
                     delay(750)   // throttle notification updates
                 }
             }

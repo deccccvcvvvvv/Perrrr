@@ -26,7 +26,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pro.cslauncher.app.Services
 import pro.cslauncher.app.ui.LauncherViewModel
-import pro.cslauncher.app.ui.theme.CsCard
+import pro.cslauncher.app.ui.theme.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import pro.cslauncher.app.ui.theme.LocalPalette
 import pro.cslauncher.core.content.*
 import java.io.File
@@ -35,7 +40,9 @@ import java.nio.file.Path
 
 enum class ContentSection(val title: String) { MODS("Mods"), RESOURCE_PACKS("Resource packs"), SHADERS("Shader packs"), WORLDS("Worlds"), SCREENSHOTS("Screenshots"), RECORDINGS("Recordings") }
 
-private data class Entry(val key: String, val title: String, val subtitle: String, val path: Path, val enabled: Boolean? = null, val warning: String? = null)
+private data class Entry(val key: String, val title: String, val subtitle: String, val path: Path, val enabled: Boolean? = null, val warning: String? = null,
+                         /** Icon inside the archive (mods: declared icon, packs: pack.png); worlds use <dir>/icon.png. */
+                         val archiveIcon: String? = null)
 
 @Composable
 fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> Unit) {
@@ -58,12 +65,12 @@ fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> 
                         val mm = ModManager(gd)
                         val findings = profile.let { pr -> runCatching { mm.checkCompatibility(pr.versionId, pr.loader?.type, 17) }.getOrDefault(emptyList()) }
                         mm.list().map { m -> Entry(m.file.toString(), m.name, listOfNotNull(m.version, m.loaders.joinToString { it.name.lowercase() }, formatBytes(m.sizeBytes)).joinToString(" · "),
-                            m.file, m.enabled, findings.filter { it.file == m.file }.joinToString("; ") { it.message }.ifBlank { m.metadataError }) }
+                            m.file, m.enabled, findings.filter { it.file == m.file }.joinToString("; ") { it.message }.ifBlank { m.metadataError }, m.iconPath) }
                     }
                     ContentSection.RESOURCE_PACKS -> gameDir?.let { gd ->
                         val rp = ResourcePackManager(gd); val enabled = rp.enabled().toSet(); val expected = profile.let { PackFormats.expectedFor(it.versionId) }
                         rp.list().map { pk -> Entry(pk.path.toString(), pk.name, "${PackFormats.describe(pk.packFormat)} · ${formatBytes(pk.sizeBytes)}", pk.path, pk.path.fileName.toString() in enabled,
-                            pk.problem ?: if (expected != null && pk.packFormat != null && pk.packFormat != expected) "Made for a different version (expected format $expected)" else null) }
+                            pk.problem ?: if (expected != null && pk.packFormat != null && pk.packFormat != expected) "Made for a different version (expected format $expected)" else null, "pack.png") }
                     }
                     ContentSection.SHADERS -> gameDir?.let { gd ->
                         val sp = ShaderPackManager(gd); val loaderKind = sp.detectLoader(ModManager(gd).list()); val active = sp.active(loaderKind)
@@ -110,26 +117,42 @@ fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> 
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader(section.title, onBack) {
+        ScreenHeader(section.title + (profile?.let { " · ${it.name}" } ?: ""), onBack) {
             if (section in setOf(ContentSection.MODS, ContentSection.RESOURCE_PACKS, ContentSection.SHADERS, ContentSection.WORLDS))
-                IconButton(onClick = { importer.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream", "*/*")) }) { Icon(Icons.Filled.Add, "Import", tint = p.text) }
+                PixelButton("Import file", { importer.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream", "*/*")) }, icon = "folder", height = 40.dp)
         }
         if (profile == null && section != ContentSection.RECORDINGS) { Text("Select a profile first.", color = p.textMuted, modifier = Modifier.padding(16.dp)); return@Column }
-        if (entries.isEmpty()) Text("Nothing here yet.", color = p.textMuted, modifier = Modifier.padding(16.dp))
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(entries, key = { it.key }) { e ->
-                CsCard(Modifier.fillMaxWidth()) {
+        if (entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            PixelIcon(when (section) { ContentSection.MODS -> "pickaxe"; ContentSection.WORLDS -> "world"; ContentSection.SCREENSHOTS -> "image"; ContentSection.RECORDINGS -> "record"; else -> "painting" }, size = 56.dp)
+            Text("Nothing here yet.", color = p.textMuted, modifier = Modifier.padding(top = 10.dp))
+            if (section != ContentSection.SCREENSHOTS && section != ContentSection.RECORDINGS && section != ContentSection.WORLDS)
+                Text("Use Browse to find ${section.title.lowercase()} for this profile, or import a file.", color = p.textMuted, fontSize = 12.sp)
+        }
+        LazyVerticalGrid(GridCells.Adaptive(if (section == ContentSection.SCREENSHOTS) 240.dp else 330.dp), Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+            itemsIndexed(entries, key = { _, it -> it.key }) { i, e ->
+                PixelPanel(Modifier.fillMaxWidth().staggerIn(i % 14), padding = 8.dp) {
                     if (section == ContentSection.SCREENSHOTS) {
                         val bmp = remember(e.key) { BitmapFactory.decodeFile(e.key, BitmapFactory.Options().apply { inSampleSize = 4 })?.asImageBitmap() }
-                        bmp?.let { Image(it, e.title, Modifier.fillMaxWidth().heightIn(max = 180.dp)) }
+                        bmp?.let { Image(it, e.title, Modifier.fillMaxWidth().heightIn(max = 150.dp)) }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(e.title, color = p.text, fontWeight = FontWeight.Medium, maxLines = 1)
-                            Text(e.subtitle, color = p.textSecondary, fontSize = 12.sp)
-                            e.warning?.let { Text(it, color = p.warning, fontSize = 12.sp) }
+                        if (section in setOf(ContentSection.MODS, ContentSection.RESOURCE_PACKS, ContentSection.SHADERS, ContentSection.WORLDS)) {
+                            PixelSlot(size = 48.dp) {
+                                val fallback = when (section) { ContentSection.MODS -> "pickaxe"; ContentSection.WORLDS -> "world"; ContentSection.SHADERS -> "sun"; else -> "painting" }
+                                BytesImage("icon:" + e.key + ":" + (e.archiveIcon ?: ""), {
+                                    if (section == ContentSection.WORLDS) e.path.resolve("icon.png").toFile().takeIf { it.isFile && it.length() < (1 shl 20) }?.readBytes()
+                                    else ModInspector.readIcon(e.path, e.archiveIcon)
+                                }, 36.dp, fallbackIcon = fallback)
+                            }
+                            Spacer(Modifier.width(10.dp))
                         }
-                        if (e.enabled != null && section != ContentSection.SHADERS) Switch(checked = e.enabled, onCheckedChange = { on ->
+                        Column(Modifier.weight(1f)) {
+                            Text(e.title, color = Color.White, fontFamily = Monocraft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(e.subtitle, color = p.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            e.warning?.let { Text(it, color = p.warning, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                        }
+                        if (e.enabled != null && section != ContentSection.SHADERS) PixelToggle(e.enabled, { on ->
                             act {
                                 when (section) {
                                     ContentSection.MODS -> { val gd = gameDir!!; ModManager(gd).list().firstOrNull { it.file == e.path }?.let { ModManager(gd).setEnabled(it, on) } }
@@ -140,29 +163,29 @@ fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> 
                             }
                         })
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         when (section) {
-                            ContentSection.SHADERS -> TextButton(onClick = { act { val sp = ShaderPackManager(gameDir!!); val l = sp.detectLoader(ModManager(gameDir).list()); sp.setActive(l, if (e.enabled == true) null else e.path.fileName.toString()) } }) {
-                                Text(if (e.enabled == true) "Deactivate" else "Activate", color = p.accent) }
+                            ContentSection.SHADERS -> PixelButton(if (e.enabled == true) "Deactivate" else "Activate", { act { val sp = ShaderPackManager(gameDir!!); val l = sp.detectLoader(ModManager(gameDir).list()); sp.setActive(l, if (e.enabled == true) null else e.path.fileName.toString()) } },
+                                style = if (e.enabled == true) PxStyle.SELECTED else PxStyle.NORMAL, height = 34.dp)
                             ContentSection.WORLDS -> {
-                                TextButton(onClick = { act { val b = WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).backup(e.path); vm.toast("Backup saved: ${b.fileName}") } }) { Text("Back up", color = p.accent) }
-                                TextButton(onClick = { scope.launch {
+                                PixelButton("Back up", { act { val b = WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).backup(e.path); vm.toast("Backup saved: ${b.fileName}") } }, icon = "shield", height = 34.dp)
+                                PixelButton("Export", { scope.launch {
                                     val out = File(ctx.cacheDir, "exports").apply { mkdirs() }.resolve("${e.path.fileName}.zip").toPath()
                                     val ok = withContext(Dispatchers.IO) { runCatching { Files.deleteIfExists(out); WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).export(e.path, out) } }
                                     ok.exceptionOrNull()?.let { vm.toast(it.message) } ?: shareCache(ctx, out.toFile())
-                                } }) { Text("Export", color = p.accent) }
+                                } }, icon = "upload", height = 34.dp)
                             }
-                            ContentSection.SCREENSHOTS -> TextButton(onClick = { share(e.path, "image/png") }) { Text("Share", color = p.accent) }
-                            ContentSection.RECORDINGS -> { TextButton(onClick = { share(e.path, "video/mp4", view = true) }) { Text("Play", color = p.accent) }
-                                TextButton(onClick = { share(e.path, "video/mp4") }) { Text("Share", color = p.accent) } }
+                            ContentSection.SCREENSHOTS -> PixelButton("Share", { share(e.path, "image/png") }, icon = "upload", height = 34.dp)
+                            ContentSection.RECORDINGS -> { PixelButton("Play", { share(e.path, "video/mp4", view = true) }, icon = "play", height = 34.dp)
+                                PixelButton("Share", { share(e.path, "video/mp4") }, icon = "upload", height = 34.dp) }
                             else -> {}
                         }
                         Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { confirm = e }) { Text(if (section == ContentSection.MODS) "Remove" else "Delete", color = p.danger) }
+                        PixelIconButton("trash", if (section == ContentSection.MODS) "Remove" else "Delete", { confirm = e }, style = PxStyle.DANGER, size = 34.dp)
                     }
                 }
             }
-            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 

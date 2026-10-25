@@ -29,7 +29,7 @@ bundled**, and it has **not been run on any device**.
 
 | Versions | Java | LWJGL | Renderer path on Android (auto) | Status |
 |---|---|---|---|---|
-| 26.3 and newer (SDL3) | 25 | **3.4.3 + SDL3** | MobileGlues only (OpenGL 3.3+ core over GLES 3.x; Zink/GL4ES are reported as unsupported with the reason) | **Launch path implemented, arm64-v8a only, not yet device-verified.** The launcher's own SDL3 implementation (`cssdl3.c` in `libcsglfw.so`) provides the window, OpenGL context, input, clipboard and display APIs; the LWJGL 3.4.3 component adds shaderc + SPIRV-Cross for the 26.3 shader pipeline. OpenGL only: Vulkan is deliberately unavailable, and Minecraft falls back to OpenGL by itself. On armeabi-v7a/x86_64 these versions are blocked with an explicit message (no LWJGL 3.4 build for those ABIs yet) |
+| 26.3 and newer (SDL3) | 25 | **3.4.3 + SDL3** | MobileGlues only (OpenGL 3.3+ core over GLES 3.x; Zink/GL4ES are reported as unsupported with the reason) | **Launch path implemented, arm64-v8a only, not yet device-verified.** Round 5: the Java 25 runtime needs `libc++_shared.so`; the APK now ships it (NDK r27d) and preloads it before `libjvm.so`, fixing the "dlopen libjvm.so failed" stop seen on a device. The launcher's own SDL3 implementation (`cssdl3.c` in `libcsglfw.so`) provides the window, OpenGL context, input, clipboard and display APIs; the LWJGL 3.4.3 component adds shaderc + SPIRV-Cross for the 26.3 shader pipeline. OpenGL only: Vulkan is deliberately unavailable, and Minecraft falls back to OpenGL by itself. On armeabi-v7a/x86_64 these versions are blocked with an explicit message (no LWJGL 3.4 build for those ABIs yet) |
 | 26.1 – 26.2 (GLFW) | 25 | 3.4.1 | MobileGlues, then Zink | Launch path implemented (arm64-v8a): LWJGL 3.4.3 component + the GLFW bridge (now including GLFW's IME/preedit functions these versions call). Not yet device-verified |
 | 1.17 – 1.21.11 | 16/17/21 | 3.2.x – 3.3.3 | MobileGlues (GL 4.x over GLES 3.x), then Zink, then GL4ES | Launch path implemented. Bundled runtime + LWJGL 3.3.3 + MobileGlues |
 | 1.13 – 1.16.5 | 8 | 3.x | GL4ES (GL 2.1 over GLES 2/3), then MobileGlues | Launch path implemented. Bundled runtime + LWJGL + GL4ES |
@@ -114,7 +114,12 @@ The pack is a zip containing this manifest and every listed file. Import is done
 The pack is rejected if the ABI does not match, if any file is missing, unlisted or fails its hash, or if any path escapes the pack
 directory. Licences are shown in the UI.
 
-## 7. Known limitations (by design)
+## 7. OptiFine and modpacks
+
+* **OptiFine:** any OptiFine jar from optifine.net whose Minecraft version the launcher can install. The newest builds are previews for 26.2/26.1.2; 1.21.11 HD U J9 is stable. **There is no OptiFine for 26.3.** OptiFine runs through `launchwrapper` on the version's Java runtime. Only the 1.21.11 HD U J9 patch output was verified byte-for-byte; running OptiFine in-game on a device has not been verified.
+* **Modpacks:** Modrinth `.mrpack` packs for vanilla, Fabric and Quilt. Forge/NeoForge packs are refused with an explanation, since those loaders' installers cannot run on Android here. CurseForge modpack zips are not installed automatically.
+
+## 8. Known limitations (by design)
 * There is no LWJGL 2 support and no Forge/NeoForge support (see §3).
 * Offline profiles cannot join online-mode servers. The UI never presents them as a multiplayer solution.
 * There is no "RAM cleaner" or "overclock" feature. Performance presets only change real settings: render scale, renderer

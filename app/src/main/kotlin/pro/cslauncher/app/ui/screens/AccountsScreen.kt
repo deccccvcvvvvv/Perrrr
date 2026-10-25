@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pro.cslauncher.app.ui.LauncherViewModel
 import pro.cslauncher.app.ui.MsaState
-import pro.cslauncher.app.ui.theme.CsCard
+import pro.cslauncher.app.ui.theme.*
+import androidx.compose.ui.graphics.Color
 import pro.cslauncher.app.ui.theme.LocalPalette
 import pro.cslauncher.core.account.AccountType
 import pro.cslauncher.core.account.OfflineIdentity
@@ -34,52 +35,66 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Accounts", onBack)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-            ui.accounts.accounts.forEach { a ->
-                val active = a.id == ui.accounts.activeId
-                CsCard(Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { vm.setActiveAccount(a.id) }, selected = active) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(a.username, color = p.text, fontWeight = FontWeight.Medium)
-                            if (a.type == AccountType.MICROSOFT) Text("Microsoft account" + if ((a.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis()) " · session will be refreshed at launch" else "", color = p.textSecondary, fontSize = 13.sp)
-                            else Text("Offline profile — single-player and servers in offline mode only. Not a Minecraft login.", color = p.warning, fontSize = 13.sp)
+        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                if (ui.accounts.accounts.isEmpty()) PixelPanel(Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { PixelIcon("user_add", size = 28.dp); Spacer(Modifier.width(10.dp)); Text("No account yet. Sign in with Microsoft or add an offline profile.", color = p.textSecondary, fontSize = 13.sp) }
+                }
+                ui.accounts.accounts.forEachIndexed { i, a ->
+                    val active = a.id == ui.accounts.activeId
+                    PixelPanel(Modifier.fillMaxWidth().padding(bottom = 8.dp).staggerIn(i).clickable { vm.setActiveAccount(a.id) }, selected = active, padding = 10.dp) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PixelSlot(size = 44.dp) { PixelIcon("head", size = 30.dp) }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    PixelTitle(a.username, fontSize = 14.sp); Spacer(Modifier.width(8.dp))
+                                    if (a.type == AccountType.MICROSOFT) Badge("MICROSOFT", Color(0xFF8FD3FF)) else Badge("OFFLINE", p.warning)
+                                    if (active) { Spacer(Modifier.width(6.dp)); Badge("ACTIVE", icon = "check") }
+                                }
+                                if (a.type == AccountType.MICROSOFT) Text(if ((a.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis()) "Session will be refreshed at launch" else "Signed in", color = p.textSecondary, fontSize = 12.sp)
+                                else Text("Single-player and offline-mode servers only. Not a Minecraft login.", color = p.warning, fontSize = 12.sp)
+                            }
+                            PixelIconButton("trash", "Sign out", { removing = a.id }, style = PxStyle.DANGER, size = 36.dp)
                         }
-                        TextButton(onClick = { removing = a.id }) { Text("Sign out", color = p.danger) }
                     }
                 }
             }
-
-            SectionTitle("Microsoft account")
-            CsCard(Modifier.fillMaxWidth()) {
-                when (val s = msa) {
-                    MsaState.Idle, is MsaState.Done -> {
-                        if (s is MsaState.Done) Text("Signed in as ${s.name}", color = p.success)
-                        Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. You enter the code on Microsoft's own page; the launcher never sees your password.", color = p.textSecondary, fontSize = 13.sp)
-                        Spacer(Modifier.height(8.dp)); Button(onClick = { vm.startMicrosoft() }, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.background)) { Text("Sign in with Microsoft") }
-                    }
-                    is MsaState.Code -> {
-                        Text("Open the page below and enter this code:", color = p.textSecondary)
-                        Text(s.userCode, color = p.text, fontSize = 28.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
-                        Text(s.uri, color = p.accent)
-                        Row {
-                            TextButton(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(s.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text("Open browser", color = p.accent) }
-                            TextButton(onClick = { vm.cancelMicrosoft() }) { Text("Cancel", color = p.textSecondary) }
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                PixelPanel(Modifier.fillMaxWidth()) {
+                    PixelTitle("Microsoft account", fontSize = 14.sp)
+                    Spacer(Modifier.height(6.dp))
+                    when (val s = msa) {
+                        MsaState.Idle, is MsaState.Done -> {
+                            if (s is MsaState.Done) Text("Signed in as ${s.name}", color = p.success, fontSize = 13.sp)
+                            Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. You enter the code on Microsoft's own page; the launcher never sees your password.", color = p.textSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp)); PixelButton("Sign in with Microsoft", { vm.startMicrosoft() }, style = PxStyle.PRIMARY, icon = "user_add")
                         }
-                        Text("Waiting for confirmation… (code expires in ${((s.expiresAtMs - System.currentTimeMillis()) / 60000).coerceAtLeast(0)} min)", color = p.textMuted, fontSize = 12.sp)
+                        is MsaState.Code -> {
+                            Text("Open the page below and enter this code:", color = p.textSecondary, fontSize = 12.sp)
+                            Text(s.userCode, color = Color.White, fontSize = 28.sp, fontFamily = Monocraft, modifier = Modifier.padding(vertical = 8.dp))
+                            Text(s.uri, color = p.accent, fontSize = 12.sp)
+                            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PixelButton("Open browser", { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(s.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, style = PxStyle.PRIMARY, height = 38.dp)
+                                PixelButton("Cancel", { vm.cancelMicrosoft() }, height = 38.dp)
+                            }
+                            Text("Waiting for confirmation… (code expires in ${((s.expiresAtMs - System.currentTimeMillis()) / 60000).coerceAtLeast(0)} min)", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        is MsaState.Working -> { Text(s.message, color = p.textSecondary, fontSize = 12.sp); PixelProgress(null, Modifier.padding(top = 8.dp)) }
+                        is MsaState.Error -> { Text(s.message, color = p.danger, fontSize = 12.sp); PixelButton("Try again", { vm.startMicrosoft() }, icon = "refresh", height = 38.dp, modifier = Modifier.padding(top = 6.dp)) }
                     }
-                    is MsaState.Working -> { Text(s.message, color = p.textSecondary); LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp), color = p.accent) }
-                    is MsaState.Error -> { Text(s.message, color = p.danger); TextButton(onClick = { vm.startMicrosoft() }) { Text("Try again", color = p.accent) } }
                 }
+                Spacer(Modifier.height(10.dp))
+                PixelPanel(Modifier.fillMaxWidth()) {
+                    PixelTitle("Offline profile", fontSize = 14.sp)
+                    Text("For single-player and LAN/servers running in offline mode. Online-mode servers and Realms require a Microsoft account.", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
+                    PixelTextField(offlineName, { offlineName = it }, placeholder = "Player name (3–16 letters, digits or _)")
+                    if (offlineName.isNotEmpty() && !OfflineIdentity.validName(offlineName)) Text("3–16 letters, digits or _", color = p.danger, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    PixelButton("Add offline profile", { vm.addOffline(offlineName); offlineName = "" }, enabled = OfflineIdentity.validName(offlineName), icon = "plus")
+                }
+                Spacer(Modifier.height(16.dp))
             }
-
-            SectionTitle("Offline profile")
-            CsCard(Modifier.fillMaxWidth()) {
-                Text("For single-player and LAN/servers running in offline mode. Online-mode servers and Realms require a Microsoft account.", color = p.textSecondary, fontSize = 13.sp)
-                OutlinedTextField(offlineName, { offlineName = it }, label = { Text("Player name") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    isError = offlineName.isNotEmpty() && !OfflineIdentity.validName(offlineName), supportingText = { Text("3–16 letters, digits or _") })
-                TextButton(onClick = { vm.addOffline(offlineName); offlineName = "" }, enabled = OfflineIdentity.validName(offlineName)) { Text("Add offline profile", color = p.accent) }
-            }
-            Spacer(Modifier.height(24.dp))
         }
     }
     removing?.let { id -> ConfirmDialog("Sign out?", "The account and its stored session are removed from this device. Profiles and worlds are not affected.", "Sign out", true, { vm.removeAccount(id) }, { removing = null }) }
