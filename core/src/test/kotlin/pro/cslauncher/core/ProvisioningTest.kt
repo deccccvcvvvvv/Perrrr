@@ -163,6 +163,12 @@ class ProvisioningTest {
         // Java 8 layout: lib/aarch64/server/libjvm.so
         val e8 = AndroidRuntimeEnv.build("/data/rt/jre8/lib/aarch64/server/libjvm.so", 8, emptyList(), emptyMap(), "/t", "/g", "/r", "UTC", "14", emptyList())
         assertEquals("/data/rt/jre8", e8.env["JAVA_HOME"]); assertTrue(e8.preload.any { it.first == "/data/rt/jre8/lib/aarch64/libjava.so" })
+        // Device report: jre25's libjvm.so needs libc++_shared.so, which is not in the runtime archive. The app's copy is
+        // preloaded first (optional, so runtimes that do not need it are unaffected).
+        val e25 = AndroidRuntimeEnv.build("/data/rt/jre25/lib/server/libjvm.so", 25, emptyList(), emptyMap(), "/t", "/g", "/r", "UTC", "14", emptyList(),
+            cxxShared = "/data/app/lib/arm64/libc++_shared.so")
+        assertEquals("/data/app/lib/arm64/libc++_shared.so" to false, e25.preload.first())
+        assertEquals("/data/rt/jre25/lib/server/libjvm.so", e25.preload[1].first)
         // user-provided properties win
         val eu = AndroidRuntimeEnv.build("/r/lib/server/libjvm.so", 17, emptyList(), emptyMap(), "/t", "/g", "/r", "UTC", "14", listOf("-Duser.timezone=Europe/Berlin"))
         assertTrue(eu.jvmOptions.none { it.startsWith("-Duser.timezone") })

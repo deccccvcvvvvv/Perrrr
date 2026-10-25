@@ -26,6 +26,7 @@ tasks.test {
     // Network/E2E tests only run when explicitly requested: ./gradlew :core:test -Pintegration
     systemProperty("cs.integration", (project.findProperty("integration") ?: "false").toString())
     systemProperty("cs.bundleDir", (project.findProperty("bundleDir") ?: "").toString())
+    systemProperty("cs.optifineDir", (project.findProperty("optifineDir") ?: "").toString())
     testLogging { events("passed", "skipped", "failed"); showStandardStreams = false; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
 }
 

@@ -159,7 +159,8 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             val tmp = File(plan.sessionDir, "tmp").absolutePath
             val resolv = File(plan.sessionDir, "resolv.conf").apply { writeText(AndroidRuntimeEnv.resolvConf(systemDnsServers())) }
             val rt = AndroidRuntimeEnv.build(libjvm, plan.javaMajor, plan.nativeDirs, plan.rendererLibraries, tmp, plan.workingDir,
-                resolv.absolutePath, java.util.TimeZone.getDefault().id, android.os.Build.VERSION.RELEASE, exec.jvmArgs)
+                resolv.absolutePath, java.util.TimeZone.getDefault().id, android.os.Build.VERSION.RELEASE, exec.jvmArgs,
+                cxxShared = File(applicationInfo.nativeLibraryDir, "libc++_shared.so").takeIf { it.isFile }?.absolutePath)
             NativeBridge.updateLinkerPath(rt.linkerPath)
             NativeBridge.preloadLibraries(rt.preload.map { it.first }.toTypedArray(), rt.preload.map { it.second }.toBooleanArray())
                 ?.let { error("The Java runtime could not be loaded: $it") }

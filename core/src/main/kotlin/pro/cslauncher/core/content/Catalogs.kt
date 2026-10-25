@@ -7,7 +7,7 @@ import pro.cslauncher.core.util.*
 import java.net.URLEncoder
 import java.nio.file.Path
 
-enum class ProjectKind(val modrinth: String) { MOD("mod"), RESOURCE_PACK("resourcepack"), SHADER("shader"), DATAPACK("datapack") }
+enum class ProjectKind(val modrinth: String) { MOD("mod"), MODPACK("modpack"), RESOURCE_PACK("resourcepack"), SHADER("shader"), DATAPACK("datapack") }
 data class CatalogProject(val source: String, val id: String, val slug: String, val title: String, val description: String, val downloads: Long, val iconUrl: String?, val author: String?, val categories: List<String>)
 data class CatalogFile(val source: String, val projectId: String, val versionName: String, val fileName: String, val url: String, val sha1: String?, val sha512: String?, val size: Long?,
                        val gameVersions: List<String>, val loaders: List<String>, val requiredDependencies: List<String>) {
@@ -28,7 +28,7 @@ class ModrinthCatalog(private val http: HttpTransport) : ContentCatalog {
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
     override fun search(query: String, kind: ProjectKind, gameVersion: String?, loader: String?, offset: Int): List<CatalogProject> {
-        val facets = buildList { add("[\"project_type:${kind.modrinth}\"]"); gameVersion?.let { add("[\"versions:$it\"]") }; if (loader != null && kind == ProjectKind.MOD) add("[\"categories:$loader\"]") }
+        val facets = buildList { add("[\"project_type:${kind.modrinth}\"]"); gameVersion?.let { add("[\"versions:$it\"]") }; if (loader != null && (kind == ProjectKind.MOD || kind == ProjectKind.MODPACK)) add("[\"categories:$loader\"]") }
         val o = parseJsonObject(http.getText("$base/search?query=${enc(query)}&limit=20&offset=$offset&facets=${enc(facets.joinToString(",", "[", "]"))}"), "Modrinth search")
         return o.arr("hits")?.map { h -> val p = h.jsonObject
             CatalogProject("modrinth", p.str("project_id")!!, p.str("slug") ?: "", p.str("title") ?: "", p.str("description") ?: "", p.long("downloads") ?: 0, p.str("icon_url"), p.str("author"), p.arr("categories")?.map { it.jsonPrimitive.content } ?: emptyList())
@@ -58,7 +58,7 @@ class CurseForgeCatalog(private val http: HttpTransport, private val apiKey: Str
     override val name = "CurseForge"; override val available get() = !apiKey.isNullOrBlank()
     private val base = "https://api.curseforge.com/v1"
     private fun h() = mapOf("x-api-key" to (apiKey ?: throw IllegalStateException("CurseForge needs an API key (Settings › Network)")), "Accept" to "application/json")
-    private val classIds = mapOf(ProjectKind.MOD to 6, ProjectKind.RESOURCE_PACK to 12, ProjectKind.SHADER to 6552, ProjectKind.DATAPACK to 6945)
+    private val classIds = mapOf(ProjectKind.MOD to 6, ProjectKind.MODPACK to 4471, ProjectKind.RESOURCE_PACK to 12, ProjectKind.SHADER to 6552, ProjectKind.DATAPACK to 6945)
     private val loaderIds = mapOf("forge" to 1, "fabric" to 4, "quilt" to 5, "neoforge" to 6)
 
     override fun search(query: String, kind: ProjectKind, gameVersion: String?, loader: String?, offset: Int): List<CatalogProject> {

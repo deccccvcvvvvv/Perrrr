@@ -12,6 +12,8 @@ data class ModInfo(
     val file: Path, val enabled: Boolean, val loaders: Set<LoaderType>, val modId: String?, val name: String, val version: String?,
     val description: String?, val minecraftRange: String?, val javaRange: String?, val dependencies: List<ModDependency>,
     val breaks: List<String>, val hasNativeCode: Boolean, val sizeBytes: Long, val metadataError: String? = null,
+    /** Path of the mod's icon inside its archive (fabric "icon", quilt "metadata.icon", mods.toml "logoFile"). */
+    val iconPath: String? = null,
 )
 
 enum class Certainty { CERTAIN, LIKELY, UNKNOWN }
@@ -37,6 +39,35 @@ object ModInspector {
         } catch (e: Exception) { base.copy(metadataError = "Unreadable archive: ${e.message}") }
     }
 
+    /** Reads the declared icon (PNG/JPEG) from a mod archive; null when absent, oversized or unsafe. */
+    fun readIcon(file: Path, iconPath: String?, maxBytes: Int = 1 shl 20): ByteArray? {
+        val p = iconPath?.trim()?.removePrefix("/")?.takeIf { it.isNotEmpty() && !it.contains("..") } ?: return null
+        return runCatching {
+            ZipFile(file.toFile()).use { z ->
+                val e = z.getEntry(p) ?: return null
+                if (e.size > maxBytes) return null
+                z.getInputStream(e).use { ins ->
+                    val b = ins.readNBytesCompat(maxBytes + 1)
+                    if (b.size > maxBytes) null else b
+                }
+            }
+        }.getOrNull()
+    }
+
+    private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(8192); var total = 0
+        while (total < limit) { val n = read(buf, 0, minOf(buf.size, limit - total)); if (n < 0) break; out.write(buf, 0, n); total += n }
+        return out.toByteArray()
+    }
+
+    /** Fabric/Quilt "icon" is either a path or a {"size": path} map; prefer the size closest to 128px. */
+    private fun iconOf(el: JsonElement?): String? = when (el) {
+        is JsonPrimitive -> el.contentOrNull
+        is JsonObject -> el.entries.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to (v as? JsonPrimitive)?.contentOrNull } }
+            .filter { it.second != null }.minByOrNull { kotlin.math.abs(it.first - 128) }?.second
+        else -> null
+    }
+
     private fun depMap(o: JsonObject?, required: Boolean) = o?.map { (k, v) ->
         ModDependency(k, when (v) { is JsonPrimitive -> v.content; is JsonArray -> v.joinToString(" || ") { it.jsonPrimitive.content }; else -> "*" }, required)
     } ?: emptyList()
@@ -47,7 +78,7 @@ object ModInspector {
         return b.copy(loaders = setOf(LoaderType.FABRIC, LoaderType.QUILT), modId = o.str("id"), name = o.str("name") ?: b.name, version = o.str("version"),
             description = o.str("description"), minecraftRange = deps.firstOrNull { it.modId == "minecraft" }?.versionRange,
             javaRange = deps.firstOrNull { it.modId == "java" }?.versionRange, dependencies = deps.filter { it.modId !in setOf("minecraft", "java") },
-            breaks = o.obj("breaks")?.keys?.toList() ?: emptyList(), hasNativeCode = natives)
+            breaks = o.obj("breaks")?.keys?.toList() ?: emptyList(), hasNativeCode = natives, iconPath = iconOf(o["icon"]))
     }
 
     private fun quilt(b: ModInfo, t: String, natives: Boolean): ModInfo {
@@ -58,31 +89,34 @@ object ModInspector {
         val meta = ql.obj("metadata")
         return b.copy(loaders = setOf(LoaderType.QUILT), modId = ql.str("id"), name = meta?.str("name") ?: b.name, version = ql.str("version"),
             description = meta?.str("description"), minecraftRange = deps.firstOrNull { it.modId == "minecraft" }?.versionRange,
-            dependencies = deps.filter { it.modId != "minecraft" && it.modId != "java" }, hasNativeCode = natives)
+            dependencies = deps.filter { it.modId != "minecraft" && it.modId != "java" }, hasNativeCode = natives, iconPath = iconOf(meta?.get("icon")))
     }
 
     /** Small TOML subset reader sufficient for mods.toml ([[mods]] and [[dependencies.x]] tables with key = "value"). */
     private fun toml(b: ModInfo, t: String, loader: LoaderType, natives: Boolean): ModInfo {
         var section = ""; val mods = mutableListOf<MutableMap<String, String>>(); val deps = mutableListOf<MutableMap<String, String>>()
         var cur: MutableMap<String, String>? = null
+        var topLogo: String? = null
         for (raw in t.lines()) {
             val line = raw.substringBefore(" #").trim(); if (line.isEmpty() || line.startsWith("#")) continue
             if (line.startsWith("[[")) { section = line.trim('[', ']').trim(); cur = mutableMapOf(); if (section == "mods") mods += cur else if (section.startsWith("dependencies")) deps += cur.also { it["__owner"] = section.substringAfter('.') }; continue }
             if (line.startsWith("[")) { section = line.trim('[', ']'); cur = null; continue }
-            val i = line.indexOf('='); if (i < 0 || cur == null) continue
+            val i = line.indexOf('=')
+            if (i >= 0 && section.isEmpty() && line.substring(0, i).trim() == "logoFile") topLogo = line.substring(i + 1).trim().trim('"', '\'')
+            if (i < 0 || cur == null) continue
             cur[line.substring(0, i).trim()] = line.substring(i + 1).trim().trim('"', '\'')
         }
         val m = mods.firstOrNull() ?: return b.copy(loaders = setOf(loader), metadataError = "mods.toml has no [[mods]] entry")
         val d = deps.map { ModDependency(it["modId"] ?: "?", it["versionRange"] ?: "*", (it["mandatory"] ?: it["type"]?.let { t2 -> (t2 == "required").toString() } ?: "true") == "true") }
         return b.copy(loaders = setOf(loader), modId = m["modId"], name = m["displayName"] ?: b.name, version = m["version"]?.takeUnless { it.contains("\${") },
             description = m["description"], minecraftRange = d.firstOrNull { it.modId == "minecraft" }?.versionRange,
-            dependencies = d.filter { it.modId !in setOf("minecraft", "forge", "neoforge", "java") }, hasNativeCode = natives)
+            dependencies = d.filter { it.modId !in setOf("minecraft", "forge", "neoforge", "java") }, hasNativeCode = natives, iconPath = m["logoFile"] ?: topLogo)
     }
 
     private fun mcmod(b: ModInfo, t: String, natives: Boolean): ModInfo {
         val el = runCatching { CsJson.parseToJsonElement(t) }.getOrNull() ?: return b.copy(loaders = setOf(LoaderType.FORGE), metadataError = "Invalid mcmod.info")
         val o = when (el) { is JsonArray -> el.firstOrNull()?.jsonObject; is JsonObject -> el.arr("modList")?.firstOrNull()?.jsonObject; else -> null } ?: return b.copy(loaders = setOf(LoaderType.FORGE))
-        return b.copy(loaders = setOf(LoaderType.FORGE), modId = o.str("modid"), name = o.str("name") ?: b.name, version = o.str("version"), description = o.str("description"), minecraftRange = o.str("mcversion"), hasNativeCode = natives)
+        return b.copy(loaders = setOf(LoaderType.FORGE), modId = o.str("modid"), name = o.str("name") ?: b.name, version = o.str("version"), description = o.str("description"), minecraftRange = o.str("mcversion"), hasNativeCode = natives, iconPath = o.str("logoFile"))
     }
 
     /** Simplified version predicate check. Returns null when the predicate cannot be evaluated (reported as uncertain). */

@@ -32,12 +32,13 @@ data class AndroidRuntimeEnv(
             libjvm: String, javaMajor: Int, nativeDirs: List<String>, rendererLibraries: Map<String, String>,
             sessionTmp: String, gameDir: String, resolvConf: String, timeZoneId: String, androidRelease: String,
             existingJvmArgs: List<String>,
+            cxxShared: String? = null,   // the app's libc++_shared.so; runtimes built with c++_shared (Java 25) need it
         ): AndroidRuntimeEnv {
             val jvmFile = File(libjvm)
             val libDir = jvmFile.parentFile.parentFile                  // .../lib or .../lib/aarch64 (Java 8)
             // Java 8: <home>/lib/<arch>/server/libjvm.so ; Java 9+: <home>/lib/server/libjvm.so
             val javaHome = if (javaMajor <= 8) libDir.parentFile.parentFile else libDir.parentFile
-            val preload = RUNTIME_LIBS.map { (name, req) ->
+            val preload = listOfNotNull(cxxShared?.let { it to false }) + RUNTIME_LIBS.map { (name, req) ->
                 (if (name == "libjvm.so") jvmFile else File(libDir, name)).absolutePath to req
             }
             val rendererDirs = rendererLibraries.values.map { File(it).parent }.filterNotNull()
