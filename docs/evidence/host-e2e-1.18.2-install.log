@@ -1,0 +1,17 @@
+[2026-10-25T08:59:34.809929167Z] Host: linux X86_64 6.1.158+; JVM 17.0.21; root=/home/user/.cache/cs-e2e
+[2026-10-25T08:59:34.951521830Z] Manifest: 920 versions, latest release 26.3, fromCache=true
+[2026-10-25T08:59:34.953991818Z] [RESOLVE] Reading metadata for 1.18.2
+[2026-10-25T08:59:35.017195883Z] [DIRECTORIES] Preparing directories
+[2026-10-25T08:59:35.040086274Z] [CLIENT] 1.18.2 client: 0/2 files, 0 MB, failed 0
+[2026-10-25T08:59:35.131849756Z] [CLIENT] 1.18.2 client: 2/2 files, 19 MB, failed 0
+[2026-10-25T08:59:35.312876719Z] [LIBRARIES] 1.18.2 libraries: 44/44 files, 55 MB, failed 0
+[2026-10-25T08:59:35.321088095Z] [ASSETS] 1.18.2 asset index: 1/1 files, 0 MB, failed 0
+[2026-10-25T08:59:37.097992645Z] [ASSETS] 1.18.2 assets: 3052/3052 files, 446 MB, failed 0
+[2026-10-25T08:59:37.099943173Z] [NATIVES] Extracting natives
+[2026-10-25T08:59:37.139662969Z] [VERIFY] Verifying files
+[2026-10-25T08:59:37.778196383Z] [VERIFY] Installation of 1.18.2 verified (3099 files)
+[2026-10-25T08:59:37.782993312Z] Install finished in 2s: Installation of 1.18.2 verified (3099 files)
+[2026-10-25T08:59:39.035328642Z] Re-install (should skip all files) in 1s: Installation of 1.18.2 verified (3099 files)
+[2026-10-25T08:59:39.623830518Z] Full SHA-1 verification: Installation of 1.18.2 verified (3099 files)
+[2026-10-25T08:59:40.215721965Z] After corrupting logging-1.0.0.jar: 1 issue(s): com.mojang:logging:1.0.0 (sha1 fb5dd2dd6ce2b7186780a5ffcd2bef3afb0d0b6b != expected f6ca3b2eee0b80b384e8ed93d368faecb82dfb9b)
+[2026-10-25T08:59:41.266181220Z] Targeted repair: 1 files ready; re-verify: Installation of 1.18.2 verified (3099 files)

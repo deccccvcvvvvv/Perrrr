@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.CSLauncher" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="Theme.CSLauncher.Game" parent="Theme.CSLauncher">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+    <color name="bg">#FF0B0B0E</color>
+</resources>

@@ -1,0 +1,8 @@
+<resources>
+    <!-- Display-cutout handling exists from API 27; on 26 the base theme applies. -->
+    <style name="Theme.CSLauncher.Game" parent="Theme.CSLauncher">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
