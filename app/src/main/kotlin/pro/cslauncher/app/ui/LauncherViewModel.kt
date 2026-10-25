@@ -19,6 +19,7 @@ import pro.cslauncher.core.activity.ActivityItem
 import pro.cslauncher.core.activity.ActivityKind
 import pro.cslauncher.core.content.LoaderInstaller
 import pro.cslauncher.core.diagnostics.CrashAnalyzer
+import pro.cslauncher.core.diagnostics.FailureKind
 import pro.cslauncher.core.diagnostics.Diagnosis
 import pro.cslauncher.core.launch.*
 import pro.cslauncher.core.meta.VersionManifest
@@ -72,7 +73,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val _msa = MutableStateFlow<MsaState>(MsaState.Idle)
     val msa: StateFlow<MsaState> = _msa
     private var msaJob: Job? = null
-    private val failedFingerprintsFile get() = s.dirs.config.resolve("renderer-failures.txt").toFile()
+    // v2: v1 entries could blame a renderer for failures it did not cause, so they are no longer read.
+    private val failedFingerprintsFile get() = s.dirs.config.resolve("renderer-failures-v2.txt").toFile()
     private val processedFile get() = s.dirs.config.resolve("processed-sessions.txt").toFile()
     val device = s.device
     val facts by lazy { s.device.facts() }
@@ -236,15 +238,25 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 if (Milestone.READY in rec.milestones && rec.rendererFingerprint != null) p = p.copy(rendererMemo = RendererMemo(rec.rendererId, rec.rendererFingerprint!!, System.currentTimeMillis()))
                 s.profiles.upsert(p)
             }
-            if (outcome == RunOutcome.FAILED_TO_START && Milestone.RENDER_INIT !in rec.milestones && rec.rendererFingerprint != null)
-                failedFingerprintsFile.appendText(rec.rendererFingerprint + "\n")   // next auto selection skips this renderer configuration
+            val gameDir = profile?.gameDir(s.dirs)
+            val diagnoses = if (outcome == RunOutcome.SUCCESS) emptyList() else runCatching {
+                CrashAnalyzer.analyze(CrashAnalyzer.collectEvidence(gameDir ?: s.dirs.root, File(dir, "game-output.log").toPath()), rec.exitCode)
+            }.getOrDefault(emptyList())
+            // Only a failure that can be the renderer's fault counts against it (pointer-tag aborts, Java errors,
+            // missing files etc. do not), so an unrelated failure can never lock a working renderer out.
+            val rendererSuspect = diagnoses.isEmpty() || diagnoses.first().kind.rendererRelated
+            if (outcome == RunOutcome.FAILED_TO_START && Milestone.RENDER_INIT !in rec.milestones && rec.rendererFingerprint != null && rendererSuspect)
+                failedFingerprintsFile.appendText(rec.rendererFingerprint + "\n")   // next auto selection prefers another renderer configuration
             if (outcome != RunOutcome.SUCCESS && dir == latest) {
-                val gameDir = profile?.gameDir(s.dirs)
-                val evidence = runCatching { CrashAnalyzer.collectEvidence(gameDir ?: s.dirs.root, File(dir, "game-output.log").toPath()) }.getOrDefault("")
-                val diagnoses = CrashAnalyzer.analyze(evidence, rec.exitCode)
-                _ui.update { it.copy(failure = LastFailure(if (outcome == RunOutcome.CRASHED) "Game crashed" else if (outcome == RunOutcome.KILLED) "Game was stopped" else "Game failed to start",
+                val processCrashed = outcome == RunOutcome.KILLED && diagnoses.any { it.kind != FailureKind.PROCESS_KILLED }
+                val title = when {
+                    outcome == RunOutcome.CRASHED || processCrashed -> "Game crashed"
+                    outcome == RunOutcome.KILLED -> "Game was stopped"
+                    else -> "Game failed to start"
+                }
+                _ui.update { it.copy(failure = LastFailure(title,
                     listOfNotNull(rec.message?.let { m -> LaunchIssue(rec.failedAt ?: LaunchState.INITIALIZING_GAME, m, FixAction.NONE) }), diagnoses, dir.absolutePath)) }
-                s.activity.add(ActivityItem(ActivityKind.CRASHED, _ui.value.failure!!.title, diagnoses.firstOrNull()?.kind?.title ?: (rec.crashLine ?: "exit ${rec.exitCode}"), profileId = rec.profileId), settings.value.recentActivityEnabled)
+                s.activity.add(ActivityItem(ActivityKind.CRASHED, title, diagnoses.firstOrNull()?.kind?.title ?: (rec.crashLine ?: "exit ${rec.exitCode}"), profileId = rec.profileId), settings.value.recentActivityEnabled)
             }
             processed += dir.name
             LaunchLocks.release(rec.profileId)

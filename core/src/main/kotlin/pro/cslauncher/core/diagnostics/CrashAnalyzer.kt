@@ -11,7 +11,11 @@ enum class FailureKind(val title: String) {
     UNSUPPORTED_RENDERER("Unsupported renderer"), GRAPHICS_INIT("Graphics initialisation failed"), MISSING_MOD_DEPENDENCY("Missing mod dependency"),
     INCOMPATIBLE_MOD("Incompatible mod"), INVALID_JVM_ARGUMENT("Invalid JVM argument"), INSUFFICIENT_STORAGE("Insufficient storage"),
     OUT_OF_MEMORY("Out of memory"), INCOMPATIBLE_SHADER("Incompatible shader pack"), AUTHENTICATION("Authentication failed"),
-    DIRECTORY_PERMISSION("Game directory not writable"), PROCESS_KILLED("Game process terminated"), NATIVE_CRASH("Native crash"), UNKNOWN("Unknown failure")
+    DIRECTORY_PERMISSION("Game directory not writable"), PROCESS_KILLED("Game process terminated"), NATIVE_CRASH("Native crash"),
+    HEAP_POINTER_TAGGING("Android heap pointer tagging abort"), UNKNOWN("Unknown failure");
+
+    /** Failures that can be caused by the graphics backend. Only these count against a renderer in automatic mode. */
+    val rendererRelated get() = this == GRAPHICS_INIT || this == UNSUPPORTED_RENDERER || this == NATIVE_CRASH
 }
 
 /** Repairs the launcher may perform. Only launcher-owned, regenerable data is ever touched automatically. */
@@ -72,6 +76,9 @@ object CrashAnalyzer {
             { "The game could not write to its directory." }, { emptyList() }),
         RuleDef(FailureKind.AUTHENTICATION, Regex("Invalid session|Failed to (?:login|verify username)|Not authenticated with Minecraft\\.net|Multiplayer is disabled"), 0.8,
             { "The account session is invalid or expired." }, { listOf(RepairAction.SignInAgain) }),
+        RuleDef(FailureKind.HEAP_POINTER_TAGGING, Regex("Pointer tag for 0x[0-9a-fA-F]+ was truncated"), 0.95,
+            { "Android aborted the game because native code freed a heap pointer whose Android 11+ tag had been removed. " +
+              "CS Launcher Pro now turns heap pointer tagging off for the game. Update the launcher and launch again." }, { emptyList() }),
         RuleDef(FailureKind.NATIVE_CRASH, Regex("A fatal error has been detected by the Java Runtime Environment|SIGSEGV|SIGBUS|SIGABRT|Fatal signal \\d+"), 0.7,
             { "A native component crashed (driver, renderer or JVM)." }, { listOf(RepairAction.SuggestRenderer("native crash")) }),
     )

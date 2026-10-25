@@ -127,6 +127,22 @@ Device feedback: 1.21.x crashed at launch (ICU `PatternSyntaxException` in the a
 
 CI run 40196553754: `natives` and `natives34` passed (export verification 5,032 symbols / 0 problems, SDL3 host test 70/70, stub freshness). The `build` job did not start; GitHub reported failed account payments or a spending limit. The APK was assembled outside CI from that run's artifacts using the workflow's steps. All gates passed: `:core:test` 106/106, `RealBundleTest`, `checkRegexIcu`, `checkAndroidApi`, `lintDebug`, `assembleDebug` and the APK content checks. It is published as GitHub Release `v1.0.0-round3`: 168,820,064 bytes, SHA-256 `fa4be06de77eeba12ecaa64257977f1673c25c962a2b7044b6cb3db43c9012f8`, commit `8662fa8`.
 
+## Round 4 (device report: 1.21.11 and 26.3 stop at launch)
+
+Device feedback:
+
+* 1.21.11 stopped right after `Entering net.minecraft.client.main.Main.main` with `Pointer tag for 0x70ebff82c0 was truncated`.
+* After one failed 26.3 launch, every 26.3 launch was blocked with "No compatible renderer", even though MobileGlues was reported as "Ready".
+
+| Fix | Verification |
+|---|---|
+| Android 11+ heap pointer tagging aborts the process when desktop native code (HotSpot/LWJGL) frees a pointer whose top-byte tag was stripped. The manifest now sets `android:allowNativeHeapPointerTagging="false"`. As a runtime fallback, `libcsbridge` calls `mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, NONE)` on arm64 before loading libjvm. | `aapt2 dump xmltree` shows the attribute in the APK manifest. `libcsbridge.so` (arm64) imports `mallopt@LIBC_O`. |
+| The crash analyser classifies `Pointer tag … was truncated` as its own kind ("Android heap pointer tagging abort"). The process abort is titled "Game crashed" instead of "Game was stopped". | New `CrashAnalyzerTest` case. |
+| A failure counts against the renderer only when the top diagnosis is graphics-related (or nothing matched). If every compatible renderer is remembered as failed, automatic mode retries the preferred one with an explicit reason instead of blocking. The failure memory moved to `renderer-failures-v2.txt`, so entries written under the old policy are ignored. | New `RendererSelectionTest.sdlGameWhoseOnlyRendererFailedIsRetriedNotBlocked`. |
+| Logs screen: picker for the 10 most recent sessions, so the log of an earlier launch stays reachable. The shared report includes the session record (version, renderer, stage, exit code, message, crash line). | Compiles; lint passes. |
+
+Gates (local, same steps as the CI `build` job): `:core:test` 107/107, `RealBundleTest`, `checkRegexIcu`, `checkAndroidApi`, `lintDebug`, `assembleDebug`.
+
 ## Not verified (requires hardware)
 
 * Installing or launching the APK, Compose UI rendering, and theme appearance.

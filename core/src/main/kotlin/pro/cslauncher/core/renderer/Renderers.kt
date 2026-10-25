@@ -216,6 +216,13 @@ class RendererRegistry(val backends: List<RendererBackend> = listOf(SystemGlBack
             val b = byId(id) ?: continue
             if (st[id]?.usable == true && fingerprint(env, id) !in failedFingerprints) return RendererDecision(b, b.configure(env, options), "Automatically selected", st)
         }
+        // Every compatible backend failed before on this setup. Blocking the launch would be a dead end (the earlier
+        // failure may not have been the renderer's fault), so retry the preferred compatible backend and say so.
+        order.firstOrNull { st[it]?.usable == true }?.let { id ->
+            val b = byId(id)!!
+            return RendererDecision(b, b.configure(env, options),
+                "Retrying ${b.displayName}: it failed on an earlier launch, and no other compatible renderer is available", st)
+        }
         val why = st.entries.filter { it.value.state != RendererState.NOT_APPLICABLE }.joinToString("; ") { "${byId(it.key)?.displayName}: ${it.value.reason}" }
         return RendererDecision(null, null, "No compatible renderer. $why", st)
     }

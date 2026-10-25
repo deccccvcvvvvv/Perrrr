@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <malloc.h>
 
 #ifndef JNI_VERSION_1_8
 #define JNI_VERSION_1_8 0x00010008 /* the NDK jni.h stops at 1.6; OpenJDK accepts 1.8 */
@@ -103,7 +104,22 @@ static char **copy_array(JNIEnv *env, jobjectArray arr, int *n) {
     return out;
 }
 
+/*
+ * Android 11+ tags heap pointers (a non-zero top byte, checked by free()). HotSpot, LWJGL and other desktop native
+ * code may strip or rebuild pointer bits, and the next free() then aborts the whole process with "Pointer tag for 0x...
+ * was truncated". The manifest already opts out (allowNativeHeapPointerTagging="false"). This call is the runtime
+ * fallback for builds or devices where that opt-out is not applied. Lowering TBI to NONE is allowed at any time;
+ * pointers that are already tagged stay valid. Allocators that do not support the option return 0, which is harmless.
+ */
+static void disable_heap_pointer_tagging(void) {
+#if defined(__aarch64__) && defined(M_BIONIC_SET_HEAP_TAGGING_LEVEL)
+    int ok = mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, M_HEAP_TAGGING_LEVEL_NONE);
+    fprintf(stderr, "[CSLauncher] Heap pointer tagging %s\n", ok ? "disabled" : "unchanged (not supported or already off)");
+#endif
+}
+
 static int run_vm(LaunchSpec *s) {
+    disable_heap_pointer_tagging();
     void *h = dlopen(s->libjvm, RTLD_NOW | RTLD_GLOBAL);
     if (!h) { fprintf(stderr, "[CSLauncher] Cannot load libjvm: %s\n", dlerror()); return 201; }
     CreateJavaVM_t create = (CreateJavaVM_t)dlsym(h, "JNI_CreateJavaVM");

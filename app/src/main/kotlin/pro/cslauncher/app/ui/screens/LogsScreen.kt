@@ -23,6 +23,8 @@ import pro.cslauncher.app.ui.theme.LocalPalette
 import pro.cslauncher.core.diagnostics.RepairAction
 import pro.cslauncher.core.diagnostics.RepairEngine
 import pro.cslauncher.core.launch.Log4jXml
+import pro.cslauncher.core.launch.SessionRecord
+import pro.cslauncher.core.util.CsJson
 import pro.cslauncher.core.util.Redactor
 import java.io.File
 
@@ -33,7 +35,14 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var tab by remember { mutableIntStateOf(0) }
-    val sessionDir = remember(ui.failure) { ui.failure?.sessionDir?.let(::File) ?: Services.dirs.sessions.toFile().listFiles()?.filter { it.isDirectory }?.maxByOrNull { it.name } }
+    // Recent game sessions, newest first, so the log of an earlier launch (for example a different version) stays reachable.
+    val sessions = remember(ui.failure) {
+        Services.dirs.sessions.toFile().listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.name }?.take(10)
+            ?.map { d -> d to runCatching { CsJson.decodeFromString(SessionRecord.serializer(), File(d, "session.json").readText()) }.getOrNull() }.orEmpty()
+    }
+    var picked by remember(ui.failure) { mutableStateOf<File?>(null) }
+    val sessionDir = picked ?: ui.failure?.sessionDir?.let(::File) ?: sessions.firstOrNull()?.first
+    val record = sessions.firstOrNull { it.first == sessionDir }?.second
     val gameLog = remember(sessionDir) { sessionDir?.let { File(it, "game-output.log") }?.takeIf { it.isFile }?.let { val x = Log4jXml(); tail(it, 400).lines().flatMap { l -> x.feed(l) }.joinToString("\n") }.orEmpty() }
     val launcherLog = remember { tail(Services.launcherLogFile, 300) }
     var repairing by remember { mutableStateOf<String?>(null) }
@@ -46,6 +55,9 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                     appendLine("CS Launcher Pro diagnostic report"); appendLine("Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), ${Services.abi}")
                     appendLine("GLES ${Services.device.glesVersion}, Vulkan ${Services.device.vulkanApi}")
                     ui.failure?.let { f -> appendLine("\n== ${f.title} =="); f.issues.forEach { appendLine("- ${it.stage}: ${it.message}") }; f.diagnoses.forEach { d -> appendLine("* ${d.kind.title}: ${d.explanation}"); d.evidence.forEach { appendLine("    $it") } } }
+                    record?.let { r -> appendLine("\n== Session ${sessionDir?.name} ==")
+                        appendLine("Version ${r.versionId}, renderer ${r.rendererId}, state ${r.state}" + (r.failedAt?.let { ", failed at $it" } ?: "") + (r.exitCode?.let { ", exit $it" } ?: ""))
+                        appendLine("Milestones: ${r.milestones.joinToString()}"); r.message?.let { appendLine("Message: $it") }; r.crashLine?.let { appendLine("Crash line: $it") } }
                     sessionDir?.let { File(it, "command-line.txt") }?.takeIf { it.isFile }?.let { appendLine("\n== Command line (redacted) =="); appendLine(it.readText()) }
                     lastCrash?.let { appendLine("\n== Last launcher crash =="); appendLine(it) }
                     appendLine("\n== Game log (tail) =="); appendLine(gameLog)
@@ -93,6 +105,14 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                 repairing?.let { Text("Working: $it", color = p.textSecondary, fontSize = 12.sp); LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent) }
             }
         }
+        if (sessions.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp)) {
+            val fmt = remember { java.text.SimpleDateFormat("dd MMM HH:mm", java.util.Locale.getDefault()) }
+            sessions.forEach { (d, r) ->
+                val label = if (r == null) d.name else "${r.versionId} · ${fmt.format(java.util.Date(r.startedAtMs))}" + if (r.state.name == "EXITED") "" else " · ${r.state.name.lowercase()}"
+                FilterChip(selected = d == sessionDir, onClick = { picked = d }, label = { Text(label, fontSize = 12.sp) }, modifier = Modifier.padding(end = 6.dp))
+            }
+        }
+        record?.message?.let { m -> if (ui.failure?.sessionDir != sessionDir?.absolutePath) Text(m, color = p.danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
         TabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = p.text, modifier = Modifier.padding(top = 8.dp)) {
             Tab(tab == 0, { tab = 0 }, text = { Text("Game") }); Tab(tab == 1, { tab = 1 }, text = { Text("Launcher") })
         }

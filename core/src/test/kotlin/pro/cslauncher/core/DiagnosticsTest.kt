@@ -26,6 +26,7 @@ class CrashAnalyzerTest {
             "java.util.zip.ZipException: invalid LOC header (bad signature)" to FailureKind.CORRUPT_FILE,
             "java.lang.NoClassDefFoundError: com/mojang/blaze3d/systems/RenderSystem" to FailureKind.MISSING_LIBRARY,
             "java.io.IOException: No space left on device" to FailureKind.INSUFFICIENT_STORAGE,
+            "[CSLauncher] Entering net.minecraft.client.main.Main.main\nPointer tag for 0x70ebff82c0 was truncated, see 'https://source.android.com/devices/tech/debug/tagged-pointers'." to FailureKind.HEAP_POINTER_TAGGING,
             "Mod 'Sodium Extra' (sodium-extra) 0.5.1 requires any version of sodium, which is missing!" to FailureKind.MISSING_MOD_DEPENDENCY,
             "org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: MixinApplyError" to FailureKind.INCOMPATIBLE_MOD,
             "# A fatal error has been detected by the Java Runtime Environment:\n#  SIGSEGV (0xb) at pc=0x0000007f" to FailureKind.NATIVE_CRASH,
@@ -136,6 +137,19 @@ class RendererSelectionTest {
         assertFalse(stale.fromMemory); assertEquals("gl4es", stale.backend?.id)
         val afterCrash = reg.decide(e, "auto", emptyMap(), null, setOf(reg.fingerprint(e, "gl4es")))
         assertEquals("zink", afterCrash.backend?.id, "a renderer that failed for this exact setup is skipped")
+    }
+
+    @Test fun sdlGameWhoseOnlyRendererFailedIsRetriedNotBlocked() {
+        // Device report: 26.3 failed once (not because of the renderer); afterwards MobileGlues - the only renderer an
+        // SDL3 version can use - was remembered as failed and every launch was blocked with "No compatible renderer".
+        val reg = RendererRegistry()
+        val e = RendererEnvironment(android, 34, 32, "1.3.0", libs("libmobileglues.so", "libgl4es.so", "libOSMesa.so"), "26.3", true, true, gameUsesSdl = true)
+        assertEquals("mobileglues", reg.decide(e, "auto", emptyMap(), null, emptySet()).backend?.id)
+        val retry = reg.decide(e, "auto", emptyMap(), null, setOf(reg.fingerprint(e, "mobileglues")))
+        assertEquals("mobileglues", retry.backend?.id)
+        assertTrue(retry.reason.startsWith("Retrying MobileGlues"), retry.reason)
+        val none = reg.decide(e.copy(libraries = libs("libgl4es.so")), "auto", emptyMap(), null, emptySet())
+        assertNull(none.backend, "still no fake support when nothing compatible is installed")
     }
 
     @Test fun backendConfiguration() {
