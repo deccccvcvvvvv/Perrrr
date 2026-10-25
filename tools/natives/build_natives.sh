@@ -22,6 +22,7 @@ FREETYPE_TAG=VER-2-13-2
 OPENAL_VERSION=1.23.1
 GL4ES_COMMIT=2037865590d410bcd7b8d1f22b841472ed6d39ac
 MOBILEGLUES_COMMIT=97558a69157b033b890958b1e49258c5b51a80c6
+VULKAN_HEADERS_TAG=v1.3.275          # matches VK_HEADER_VERSION of the headers MobileGlues bundles
 COMPONENT_REV=1   # bump when packaging changes so installed packs are refreshed
 
 log() { echo "::group::$*" 2>/dev/null || true; echo "==> $*"; }
@@ -186,7 +187,12 @@ build_mobileglues() {
       git -C "$src" submodule update --init --depth 1 "$m"
     done
   fi
-  quiet mobileglues-configure cmake -S "$src/MobileGlues-cpp" -B "$B/mobileglues" "${CMAKE_ANDROID[@]}"
+  # MobileGlues bundles Vulkan headers 1.3.275, which include vk_video/*.h; upstream gets those from NDK 27's sysroot.
+  # Supply the same Khronos release as a lower-priority system include so NDK 26 works too.
+  local vkh="$WORK/Vulkan-Headers-$VULKAN_HEADERS_TAG"
+  [ -d "$vkh" ] || git clone -q --depth 1 --branch "$VULKAN_HEADERS_TAG" https://github.com/KhronosGroup/Vulkan-Headers.git "$vkh"
+  quiet mobileglues-configure cmake -S "$src/MobileGlues-cpp" -B "$B/mobileglues" "${CMAKE_ANDROID[@]}" \
+    -DCMAKE_C_FLAGS="-isystem $vkh/include" -DCMAKE_CXX_FLAGS="-isystem $vkh/include"
   quiet mobileglues-build cmake --build "$B/mobileglues" --target mobileglues -j"$JOBS"
   mkdir -p "$STAGE/mobileglues/lib"; cp "$B/mobileglues/libmobileglues.so" "$STAGE/mobileglues/lib/"
   "$STRIP" --strip-unneeded "$STAGE/mobileglues/lib/libmobileglues.so"
