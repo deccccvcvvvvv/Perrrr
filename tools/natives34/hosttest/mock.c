@@ -10,6 +10,7 @@
 #include <string.h>
 
 struct mock_state mock;
+volatile long g_frameCount = 0;
 pthread_mutex_t g_winMu = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t g_winCv = PTHREAD_COND_INITIALIZER;
 ANativeWindow *g_nativeWindow = (ANativeWindow *)0x1234;

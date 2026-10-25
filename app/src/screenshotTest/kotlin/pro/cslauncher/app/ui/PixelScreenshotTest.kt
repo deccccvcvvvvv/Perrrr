@@ -180,4 +180,39 @@ class PixelScreenshotTest {
             }
         }
     }
+
+    private class FakeGame : pro.cslauncher.app.game.GameMenuHost {
+        override val settings = androidx.compose.runtime.mutableStateOf(pro.cslauncher.core.settings.LauncherSettings())
+        override fun applySettings(s: pro.cslauncher.core.settings.LauncherSettings) { settings.value = s }
+        override fun closeMenu() {}
+        override fun controlsHidden() = false
+        override fun toggleControls() {}
+        override fun showKeyboard() {}
+        override fun editControls() {}
+        override fun tapKey(key: Int) {}
+        override fun recording() = false
+        override fun recordingPaused() = false
+        override fun togglePause() {}
+        override fun toggleRecording() {}
+        override fun layouts() = pro.cslauncher.core.controls.DefaultLayouts.all()
+        override fun currentLayoutId() = "default-touch"
+        override fun switchLayout(id: String) {}
+        override fun quitGame() {}
+        override fun forceStop() {}
+        override val gameLog = java.io.File("/nonexistent")
+        override val rendererLog: java.io.File? = null
+        override fun infoLines() = listOf("Frame rate" to "58 FPS", "Game process memory" to "1630 MB")
+    }
+
+    private fun gameShot(tab: pro.cslauncher.app.game.GameMenuTab) = paparazzi.snapshot {
+        CsTheme(ThemeChoice.PIXEL, reduceTransparency = false, reduceMotion = true) {
+            CsBackground(animated = false) {
+                pro.cslauncher.app.game.GameMenu(FakeGame(), open = true, initialTab = tab)
+            }
+        }
+    }
+
+    /** In-game menu over the game (the game itself is a live GL surface, stood in for by the launcher scene). */
+    @Test fun gameMenuQuick() = gameShot(pro.cslauncher.app.game.GameMenuTab.QUICK)
+    @Test fun gameMenuControls() = gameShot(pro.cslauncher.app.game.GameMenuTab.CONTROLS)
 }

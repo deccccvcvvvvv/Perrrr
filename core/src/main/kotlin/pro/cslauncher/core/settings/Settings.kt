@@ -22,10 +22,27 @@ import java.nio.file.Path
     val trail: Boolean = false, val selectionHighlight: Boolean = true, val externalMouse: Boolean = true,
 )
 
+/** Virtual mouse on = touchpad pointer in menus; off = direct touch (pointer shown at the finger unless hidden). */
+fun CursorSettings.withVirtualMouse(on: Boolean): CursorSettings =
+    if (on) copy(mode = CursorMode.TOUCHPAD) else if (mode == CursorMode.TOUCHPAD) copy(mode = CursorMode.SMART) else this
+/** Direct-touch only: whether the pointer is drawn where the finger touches (SMART) or not at all (IMMERSIVE). */
+fun CursorSettings.withPointerOnTouch(show: Boolean): CursorSettings = when {
+    mode == CursorMode.TOUCHPAD -> this
+    show -> copy(mode = if (mode == CursorMode.IMMERSIVE) CursorMode.SMART else mode)
+    else -> copy(mode = CursorMode.IMMERSIVE)
+}
+val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
+
 @Serializable data class TouchSettings(
     val lookSensitivityX: Float = 1.0f, val lookSensitivityY: Float = 1.0f, val invertY: Boolean = false, val smoothing: Float = 0f,
     val acceleration: Float = 0f, val tapAction: TapAction = TapAction.MOUSE_RIGHT, val longPressBreak: Boolean = true, val longPressMs: Int = 320,
     val hideOverlayWithPhysicalInput: Boolean = true, val vibrateOnPress: Boolean = false, val safeAreaPaddingDp: Float = 8f,
+    /** Global multipliers applied on top of every control's own opacity / size (live, from the in-game menu). */
+    val controlsOpacity: Float = 1f, val controlsScale: Float = 1f,
+    /** Small always-available tab at the top edge that opens the in-game menu, independent of the layout. */
+    val showMenuHandle: Boolean = true,
+    /** Frame-rate / memory read-out in the corner while playing. */
+    val showFpsHud: Boolean = false,
 )
 
 @Serializable data class RecordingSettings(
@@ -73,6 +90,9 @@ class SettingsStore(private val file: Path) {
         runCatching { Files.copy(file, file.resolveSibling("settings.corrupt-${System.currentTimeMillis()}.json")) }
         LauncherSettings()
     }
+
+    /** Re-reads the file: the launcher and the game process each hold a store and both may save (e.g. the in-game menu). */
+    @Synchronized fun reload() { _state.value = read() }
 
     @Synchronized fun update(transform: (LauncherSettings) -> LauncherSettings) {
         val next = transform(_state.value)

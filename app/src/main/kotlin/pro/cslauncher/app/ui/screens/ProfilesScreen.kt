@@ -38,6 +38,7 @@ import pro.cslauncher.core.controls.ControlLayoutStore
 import pro.cslauncher.core.meta.VersionType
 import pro.cslauncher.core.profile.*
 import pro.cslauncher.core.renderer.RendererState
+import pro.cslauncher.core.renderer.OptionType
 
 @Composable
 fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Overlay) -> Unit) {
@@ -250,6 +251,24 @@ fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
                         if (st != null) Text("${r.displayName}: ${if (st.state == RendererState.AVAILABLE) "available" else st.reason}", color = if (st.state == RendererState.AVAILABLE) p.success else p.textSecondary, fontSize = 11.sp)
                     }
                     SliderRow("Render scale", e.renderScale, 0.3f..1f, format = { "${(it * 100).toInt()}%" }) { e = e.copy(renderScale = (it * 20).toInt() / 20f) }
+                    // Options of the selected backend (Automatic: MobileGlues, which every modern version uses).
+                    val ob = renderers.firstOrNull { it.id == (if (e.rendererId == "auto") "mobileglues" else e.rendererId) }
+                    if (ob != null && ob.options.isNotEmpty()) {
+                        Text("${ob.displayName} options", color = p.text, fontSize = 12.sp, fontFamily = Monocraft, modifier = Modifier.padding(top = 8.dp))
+                        ob.options.forEach { o ->
+                            val cur = e.rendererOptions[o.key] ?: o.default
+                            val title = o.label + if (o.experimental) " (experimental)" else ""
+                            fun set(v: String) { e = e.copy(rendererOptions = if (v == o.default) e.rendererOptions - o.key else e.rendererOptions + (o.key to v)) }
+                            when (o.type) {
+                                OptionType.BOOL -> SwitchRow(title, o.description, cur == "1" || cur == "true") { set(if (it) "1" else "0") }
+                                OptionType.CHOICE -> {
+                                    ChoiceRow(title, o.choices, if (cur in o.choices) cur else o.default,
+                                        label = { c -> if (c.length == 2 && c.all(Char::isDigit)) "${c[0]}.${c[1]}" else c.replaceFirstChar(Char::uppercase) }) { set(it) }
+                                    Text(o.description, color = p.textMuted, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
             }

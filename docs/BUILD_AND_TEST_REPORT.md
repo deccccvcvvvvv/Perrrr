@@ -158,6 +158,20 @@ Device feedback: Minecraft 26.3 stopped while loading `libjvm.so` from the Java 
 
 Gates (local): `:core:test` 129/129 (0 skipped; includes `RealBundleTest` and the real-jar OptiFine comparison), `:app:testDebugUnitTest` 3/3, `checkRegexIcu`, `checkAndroidApi`, `lintDebug` (0 errors), `assembleDebug`, and the APK native-dependency check.
 
+## Round 6 (mouse pointer, virtual-mouse switch, in-game menu, 26.3 black screen)
+
+Device feedback: the pointer sometimes showed and sometimes did not; the user wanted an on/off switch for the virtual mouse and controls, a live log and quick actions inside the game; 26.3 showed the loading screen and then turned black.
+
+| Change | Verification |
+|---|---|
+| Pointer state: the touch engine assumed the game had captured the mouse at start, but the game window starts with a free pointer (title screen) and only reports changes. Both sides now start "free". The native GLFW and SDL3 windows report the current cursor mode as soon as the game window exists, and the overlay/gamepad follow it. Pointer visibility now follows one rule: never while the game captures the mouse; always with a real mouse; otherwise according to the touch mode. | `InGameControlsTest.titleScreenStartsWithAFreePointerAndDirectTouch` and `virtualMouseSwitchAndPointerVisibility`. Host SDL3 test: new check that the free pointer is reported at window creation (72/72 checks). |
+| Virtual mouse on/off: Settings › Cursor, the control editor menu ("Mouse & touch"), the in-game menu, and a new bindable action "Virtual mouse" (the inventory layout now has a Mouse button). On = touchpad-style relative pointer in menus; off = direct touch, optionally showing the pointer at the finger. The change applies live. | `switchingToVirtualMouseLiveMakesMenuTouchesRelative`, `menusAlwaysOfferTheGameMenuAndTheMouseSwitch` (serialised as `"virtual_mouse"`). |
+| In-game menu (pixel side panel). It opens from a tab at the top edge, from any ☰ button (now also in the inventory and chat layouts), or from the bindable action. Tabs: **Quick** (mouse on/off, hide controls, keyboard, edit controls, screenshot, chat, F3, F5, record/pause, FPS read-out, quit with save, force stop), **Tune** (pointer, camera and on-screen control opacity/size, layout switch; applied live and saved), **Log** (live tail of the game log or the MobileGlues `latest.log`, problems-only filter, follow/pause, copy), **Info** (FPS from the native swap counter, game memory, device memory, battery temperature, renderer, Java, render resolution). Polling only runs while its tab is visible. | Compiles; lint passes. Paparazzi screenshots `gameMenuQuick`, `gameMenuControls`. `newTouchSettingsHaveSafeDefaultsAndOldFilesStillLoad` covers settings saved by the game process and reloaded by the launcher. |
+| 26.3 black screen: MobileGlues needs "ignore shader/program errors" for 26.3-snapshot-3+ (MobileGlues release notes; other launchers set the same). The launcher never wrote MobileGlues' `config.json`, so error filtering was off. MobileGlues now gets a generated `config.json` in its directory: automatic mode uses partial error filtering for SDL3-era versions (26.3+) and keeps the previous behaviour for older versions. New per-profile renderer options (profile editor): error filter, reported GL version, shader cache, direct state access (experimental). | `mobileGluesConfigEnablesErrorFilteringFor263`. The written config is also echoed into the game log. **Not device-verified.** |
+| Pixel font: Material3 `Text` does not read the theme typography, so plain texts (e.g. the home Performance panel) used the system font. The Pixel theme now provides Monocraft as the default text style. | Home screenshot. |
+
+Gates (local): `:core:test` 135/135, `:app:testDebugUnitTest` 3/3, `lintDebug`, `assembleDebug`, host SDL3 test 72/72, and Paparazzi screenshots (6).
+
 ## Not verified (requires hardware)
 
 * Compose UI on a real device (layouts were checked with JVM-rendered screenshots only), WebView behaviour on optifine.net, and live Modrinth installs.

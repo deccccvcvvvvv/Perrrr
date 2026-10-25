@@ -35,6 +35,7 @@ import pro.cslauncher.core.launch.JvmOptionNormalizer
 import pro.cslauncher.core.launch.LaunchPlan
 import pro.cslauncher.core.settings.AudioSourceChoice
 import pro.cslauncher.core.settings.LauncherSettings
+import pro.cslauncher.core.settings.withVirtualMouse
 import pro.cslauncher.core.util.CsJson
 import java.io.File
 import java.util.concurrent.FutureTask
@@ -45,7 +46,7 @@ import kotlin.concurrent.thread
  * Hosts the game VM in the ":game" process: a SurfaceView for the GLFW/EGL window plus the touch overlay.
  * The launcher process prepares and verifies everything and writes plan.json; this activity only executes it.
  */
-class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.Listener {
+class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.Listener, GameMenuHost {
     companion object {
         const val EXTRA_SESSION_DIR = "sessionDir"; const val EXTRA_ACCOUNT_ID = "accountId"
         const val EXTRA_FINGERPRINT = "fingerprint"; const val EXTRA_RENDER_SCALE = "renderScale"
@@ -53,7 +54,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
     }
 
     private lateinit var plan: LaunchPlan
-    private lateinit var settings: LauncherSettings
+    private lateinit var launcherSettings: LauncherSettings
     private lateinit var engine: TouchEngine
     private lateinit var cursor: DynamicCursor
     private lateinit var overlay: TouchOverlayView
@@ -66,6 +67,15 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
     private var grabbed = false
     private var padActive = false
     private var lastPadTick = 0L
+    // ---- in-game menu, live settings, FPS read-out
+    private val live = androidx.compose.runtime.mutableStateOf(LauncherSettings())
+    override val settings: androidx.compose.runtime.State<LauncherSettings> get() = live
+    private val menuOpen = androidx.compose.runtime.mutableStateOf(false)
+    private val menuTab = androidx.compose.runtime.mutableStateOf(GameMenuTab.QUICK)
+    private lateinit var menuView: androidx.compose.ui.platform.ComposeView
+    private var hudFrames = -1L; private var hudAt = 0L; @Volatile private var fps = 0
+    private var surfaceSize = "?"
+    private val saveSettings = Runnable { val s = live.value; Services.settings.update { it.copy(touch = s.touch, cursor = s.cursor) } }
 
     private val projection = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val data = r.data
@@ -89,38 +99,54 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
         val loaded = dir?.let { runCatching { CsJson.decodeFromString(LaunchPlan.serializer(), File(it, "plan.json").readText()) }.getOrNull() }
         if (loaded == null) { fatal("The launch plan is missing or unreadable. Start the game from the launcher again."); return }
         plan = loaded
-        settings = Services.settings.state.value
+        launcherSettings = Services.settings.state.value
         userScale = intent.getFloatExtra(EXTRA_RENDER_SCALE, 1f).coerceIn(0.3f, 1f)
         val density = resources.displayMetrics.density
 
-        cursor = DynamicCursor(settings.cursor)
+        cursor = DynamicCursor(launcherSettings.cursor)
         sink = GameInputSink({ renderScale }, ::onCommand)
         val layout = ControlLayoutStore(Services.dirs.config.resolve("controls")).load(plan.controlLayoutId)
-        engine = TouchEngine(layout, Geometry(1, 1, density), settings.touch, sink, cursor = cursor)
+        engine = TouchEngine(layout, Geometry(1, 1, density), launcherSettings.touch, sink, cursor = cursor)
         gamepad = GamepadEngine(GamepadMapping(), engine.tracker, sink, density, cursor)
+
+        // The game window starts with a free pointer (title screen); native code confirms it when the window exists.
+        engine.setCursorGrabbed(false); gamepad.cursorGrabbed = false
 
         val surface = SurfaceView(this).apply { holder.addCallback(this@GameActivity) }
         overlay = TouchOverlayView(this, engine, cursor)
         overlay.setOnCapturedPointerListener { _, e -> onCapturedPointer(e) }
+        overlay.onMenuHandle = { openMenu() }
+        menuView = androidx.compose.ui.platform.ComposeView(this).apply {
+            visibility = View.GONE
+            setContent {
+                val s = live.value
+                pro.cslauncher.app.ui.theme.CsTheme(pro.cslauncher.core.settings.ThemeChoice.PIXEL, s.reduceTransparency, s.reduceMotion) {
+                    GameMenu(this@GameActivity, menuOpen.value, menuTab.value)
+                }
+            }
+        }
         val root = FrameLayout(this)
         root.addView(surface, FrameLayout.LayoutParams(-1, -1)); root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        root.addView(menuView, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        applyLive(launcherSettings)
+        lifecycleScope.launch { Services.settings.state.collect { s -> if (s.touch != live.value.touch || s.cursor != live.value.cursor) applyLive(s) } }
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets -> updateGeometry(insets); insets }
         overlay.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateGeometry(ViewCompat.getRootWindowInsets(root)) }
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         immersive()
         NativeBridge.listener = this
-        onBackPressedDispatcher.addCallback(this) { tapKey(Glfw.KEY_ESCAPE) }
+        onBackPressedDispatcher.addCallback(this) { if (menuOpen.value) closeMenu() else tapKey(Glfw.KEY_ESCAPE) }
         lifecycleScope.launch { RecorderService.state.collect { s -> overlay.recording = s.recording; overlay.recordingPaused = s.paused; s.error?.let { Toast.makeText(this@GameActivity, it, Toast.LENGTH_LONG).show() } } }
     }
 
     private fun updateGeometry(insets: WindowInsetsCompat?) {
         if (overlay.width == 0) return
         val cut = insets?.getInsets(WindowInsetsCompat.Type.displayCutout())
-        val d = resources.displayMetrics.density
+        val d = resources.displayMetrics.density * live.value.touch.controlsScale.coerceIn(0.5f, 2f)
         engine.setGeometry(Geometry(overlay.width, overlay.height, d, cut?.left ?: 0, cut?.top ?: 0, cut?.right ?: 0, cut?.bottom ?: 0,
-            (settings.touch.safeAreaPaddingDp * d).toInt()))
+            (launcherSettings.touch.safeAreaPaddingDp * resources.displayMetrics.density).toInt()))
     }
 
     private fun immersive() {
@@ -135,6 +161,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         val rw = ((width * userScale).toInt() and 1.inv()).coerceAtLeast(2); val rh = ((height * userScale).toInt() and 1.inv()).coerceAtLeast(2)
         renderScale = rw.toFloat() / width
+        surfaceSize = "${rw}×${rh}"
         NativeBridge.setSurface(holder.surface, width, height, rw, rh)
         if (!started) { started = true; startGame() }
     }
@@ -166,11 +193,17 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
                 ?.let { error("The Java runtime could not be loaded: $it") }
             val env = LinkedHashMap<String, String>(rt.env)
             env["MG_DIR_PATH"] = File(plan.sessionDir, "../../renderer/mobileglues").canonicalPath.also { File(it).mkdirs() }
+            // MobileGlues settings (error filtering is required for 26.3+); it reads config.json from MG_DIR_PATH.
+            plan.env[pro.cslauncher.core.renderer.MobileGluesConfig.ENV]?.let { cfg ->
+                runCatching { File(env.getValue("MG_DIR_PATH"), "config.json").writeText(cfg) }
+                    .onFailure { println("[CSLauncher] Could not write the MobileGlues config: ${it.message}") }
+                println("[CSLauncher] MobileGlues config: " + cfg.replace(Regex("\\s+"), " "))
+            }
             env["CS_CONTEXT"] = plan.rendererContext
             plan.rendererLibraries["gl"]?.let { env["CS_GL_LIB"] = it }
             plan.rendererLibraries["egl"]?.let { env["CS_EGL_LIB"] = it }
             plan.rendererLibraries["osmesa"]?.let { env["CS_OSMESA_LIB"] = it }
-            env.putAll(plan.env)
+            env.putAll(plan.env - pro.cslauncher.core.renderer.MobileGluesConfig.ENV)
             env.forEach { (k, v) -> NativeBridge.setEnv(k, v) }
             File(plan.workingDir).mkdirs(); NativeBridge.chdir(plan.workingDir)
             val opts = JvmOptionNormalizer.normalize(exec.jvmArgs + rt.jvmOptions).options
@@ -231,40 +264,94 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             InputAction.ShowKeyboard -> { overlay.requestFocus(); getSystemService(InputMethodManager::class.java).showSoftInput(overlay, 0) }
             InputAction.ToggleOverlay -> { engine.overlayHidden = !engine.overlayHidden; overlay.invalidate() }
             InputAction.ToggleRecording -> toggleRecording()
-            InputAction.LauncherMenu -> showMenu()
+            InputAction.LauncherMenu -> openMenu()
+            InputAction.ToggleVirtualMouse -> {
+                val on = !cursor.virtualMouse
+                applySettings(live.value.copy(cursor = live.value.cursor.withVirtualMouse(on)))
+                Toast.makeText(this, if (on) "Virtual mouse ON: drag to move the pointer, tap to click" else "Virtual mouse OFF: touch directly", Toast.LENGTH_SHORT).show()
+            }
             else -> {}
         }
     }
 
-    private fun showMenu() {
-        val rec = RecorderService.state.value
-        PopupMenu(this, overlay, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-            menu.add(0, 1, 0, if (engine.overlayHidden) "Show controls" else "Hide controls")
-            menu.add(0, 2, 1, "Keyboard")
-            menu.add(0, 7, 2, "Edit controls")
-            menu.add(0, 3, 2, if (rec.recording) "Stop recording" else "Start recording")
-            if (rec.recording) menu.add(0, 4, 3, if (rec.paused) "Resume recording" else "Pause recording")
-            menu.add(0, 5, 4, "Quit game (saves world)")
-            menu.add(0, 6, 5, "Force stop")
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    1 -> onCommand(InputAction.ToggleOverlay); 2 -> onCommand(InputAction.ShowKeyboard); 3 -> toggleRecording()
-                    4 -> startService(Intent(this@GameActivity, RecorderService::class.java).setAction(if (rec.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
-                    5 -> NativeBridge.requestClose()
-                    7 -> controlEditor.launch(Intent(this@GameActivity, pro.cslauncher.app.ui.ControlEditorOverlayActivity::class.java)
-                        .putExtra(pro.cslauncher.app.ui.ControlEditorActivity.EXTRA_LAYOUT, engine.layout.id))
-                    6 -> AlertDialog.Builder(this@GameActivity).setTitle("Force stop the game?")
-                        .setMessage("Unsaved progress since the last autosave will be lost. Use \"Quit game\" to save first.")
-                        .setNegativeButton("Cancel", null).setPositiveButton("Force stop") { _, _ -> session?.exited(137); finishAndRemoveTask(); Process.killProcess(Process.myPid()) }.show()
-                }
-                true
-            }
-        }.show()
+    // ---------------------------------------------------------------- in-game menu (GameMenuHost)
+    private fun openMenu(tab: GameMenuTab = GameMenuTab.QUICK) {
+        engine.cancelAll(); gamepad.releaseAll(); overlay.invalidate()
+        menuTab.value = tab; menuView.visibility = View.VISIBLE; menuOpen.value = true
+    }
+    override fun closeMenu() {
+        if (!menuOpen.value) return
+        menuOpen.value = false
+        main.postDelayed({ if (!menuOpen.value) { menuView.visibility = View.GONE; immersive() } }, 260)   // after the slide-out
+    }
+    override fun applySettings(s: LauncherSettings) { applyLive(s); main.removeCallbacks(saveSettings); main.postDelayed(saveSettings, 600) }
+    private fun applyLive(s: LauncherSettings) {
+        val scaleChanged = s.touch.controlsScale != live.value.touch.controlsScale
+        live.value = s
+        cursor.settings = s.cursor; engine.settings = s.touch; launcherSettings = s
+        overlay.opacityScale = s.touch.controlsOpacity.coerceIn(0.05f, 2f)
+        overlay.showMenuHandle = s.touch.showMenuHandle
+        if (scaleChanged) updateGeometry(ViewCompat.getRootWindowInsets(overlay))
+        updateHud()
+        overlay.invalidate()
+    }
+    private val hudTicker = object : Runnable { override fun run() { updateHud(); if (live.value.touch.showFpsHud) main.postDelayed(this, 1000) } }
+    private fun sampleFps() {
+        val now = SystemClock.uptimeMillis(); val f = runCatching { NativeBridge.frameCount() }.getOrDefault(0L)
+        if (hudFrames >= 0 && now > hudAt) fps = ((f - hudFrames) * 1000 / (now - hudAt)).toInt()
+        hudFrames = f; hudAt = now
+    }
+    private fun updateHud() {
+        main.removeCallbacks(hudTicker)
+        if (!live.value.touch.showFpsHud) { overlay.hud = null; return }
+        sampleFps()
+        overlay.hud = "$fps FPS\n${processRssMb()} MB"
+        main.postDelayed(hudTicker, 1000)
+    }
+    override fun controlsHidden() = engine.overlayHidden
+    override fun toggleControls() = onCommand(InputAction.ToggleOverlay)
+    override fun showKeyboard() = onCommand(InputAction.ShowKeyboard)
+    override fun editControls() {
+        controlEditor.launch(Intent(this, pro.cslauncher.app.ui.ControlEditorOverlayActivity::class.java)
+            .putExtra(pro.cslauncher.app.ui.ControlEditorActivity.EXTRA_LAYOUT, engine.layout.id))
+    }
+    /** Taps from the menu are sent once the panel has started closing, so the game gets focus back first. */
+    override fun tapKey(key: Int) { if (menuView.visibility == View.VISIBLE) main.postDelayed({ sendTap(key) }, 150) else sendTap(key) }
+    override fun recording() = RecorderService.state.value.recording
+    override fun recordingPaused() = RecorderService.state.value.paused
+    override fun togglePause() {
+        startService(Intent(this, RecorderService::class.java).setAction(if (recordingPaused()) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
+    }
+    override fun layouts() = ControlLayoutStore(Services.dirs.config.resolve("controls")).list()
+    override fun currentLayoutId() = engine.layout.id
+    override fun switchLayout(id: String) {
+        runCatching { ControlLayoutStore(Services.dirs.config.resolve("controls")).load(id) }.onSuccess { engine.setLayout(it); engine.setCursorGrabbed(grabbed); overlay.invalidate() }
+    }
+    override fun quitGame() { closeMenu(); NativeBridge.requestClose() }
+    override fun forceStop() { session?.exited(137); finishAndRemoveTask(); Process.killProcess(Process.myPid()) }
+    override val gameLog: File get() = File(plan.logFile)
+    override val rendererLog: File? get() = if (plan.rendererId == "mobileglues") File(plan.sessionDir, "../../renderer/mobileglues/latest.log") else null
+    override fun infoLines(): List<Pair<String, String>> {
+        sampleFps()
+        val am = getSystemService(android.app.ActivityManager::class.java); val mi = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        val temp = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+        return listOfNotNull(
+            "Frame rate" to "$fps FPS",
+            "Game process memory" to "${processRssMb()} MB",
+            "Device memory free" to "${mi.availMem / (1024 * 1024)} / ${mi.totalMem / (1024 * 1024)} MB",
+            if (temp > 0) "Battery temperature" to "%.1f °C".format(temp / 10f) else null,
+            "Minecraft" to plan.versionId,
+            "Renderer" to "${plan.rendererId} (${plan.rendererContext.lowercase()})",
+            "Java" to plan.javaMajor.toString(),
+            "Render resolution" to surfaceSize,
+            "Pointer" to when { grabbed -> "captured (camera)"; cursor.virtualMouse -> "virtual mouse"; else -> "direct touch" },
+            "Controls layout" to engine.layout.name,
+        )
     }
 
-    private fun toggleRecording() {
+    override fun toggleRecording() {
         if (RecorderService.state.value.recording) { startService(Intent(this, RecorderService::class.java).setAction(RecorderService.ACTION_STOP)); return }
-        val wantsMic = settings.recording.audio == AudioSourceChoice.MICROPHONE || settings.recording.audio == AudioSourceChoice.GAME_AND_MICROPHONE
+        val wantsMic = launcherSettings.recording.audio == AudioSourceChoice.MICROPHONE || launcherSettings.recording.audio == AudioSourceChoice.GAME_AND_MICROPHONE
         if (wantsMic && ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) micPermission.launch(Manifest.permission.RECORD_AUDIO)
         else requestProjection()
     }
@@ -279,8 +366,8 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
     }
 
     // ---------------------------------------------------------------- physical keyboard / mouse / controller
-    private fun tapKey(k: Int) { NativeBridge.sendKey(k, k, Glfw.PRESS, 0); NativeBridge.sendKey(k, k, Glfw.RELEASE, 0) }
-    private fun physicalInput() { if (settings.touch.hideOverlayWithPhysicalInput && !engine.overlayHidden) { engine.overlayHidden = true; overlay.invalidate() } }
+    private fun sendTap(k: Int) { NativeBridge.sendKey(k, k, Glfw.PRESS, 0); NativeBridge.sendKey(k, k, Glfw.RELEASE, 0) }
+    private fun physicalInput() { if (launcherSettings.touch.hideOverlayWithPhysicalInput && !engine.overlayHidden) { engine.overlayHidden = true; overlay.invalidate() } }
 
     /** Returns true when the key was forwarded to the game; unhandled keys fall through to the framework (volume, touch-device back). */
     private fun handleKey(e: KeyEvent): Boolean {

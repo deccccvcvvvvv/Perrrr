@@ -74,11 +74,17 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                     SwitchRow("Hide touch controls when a keyboard, mouse or controller is used", null, t.hideOverlayWithPhysicalInput) { v -> up { it.copy(hideOverlayWithPhysicalInput = v) } }
                     SwitchRow("Vibrate on button press", null, t.vibrateOnPress) { v -> up { it.copy(vibrateOnPress = v) } }
                     SliderRow("Safe-area padding", t.safeAreaPaddingDp, 0f..32f, format = { "${it.toInt()} dp" }) { v -> up { it.copy(safeAreaPaddingDp = v) } }
+                    SliderRow("Controls opacity", t.controlsOpacity, 0.1f..1.5f, format = { "${(it * 100).toInt()}%" }) { v -> up { it.copy(controlsOpacity = v) } }
+                    SliderRow("Controls size", t.controlsScale, 0.6f..1.6f, format = { "${(it * 100).toInt()}%" }) { v -> up { it.copy(controlsScale = v) } }
+                    SwitchRow("Game menu tab", "A small tab at the top edge opens the in-game menu with every layout", t.showMenuHandle) { v -> up { it.copy(showMenuHandle = v) } }
+                    SwitchRow("FPS and memory read-out", "Shown in the top-left corner while playing", t.showFpsHud) { v -> up { it.copy(showFpsHud = v) } }
                     TextButton(onClick = { ControlEditorActivity.open(vm.getApplication(), vm.ui.value.selected?.controlLayoutId ?: "default-touch") }) { Text("Open control layout editor", color = p.accent) }
                 }
                 Category.CURSOR -> {
                     val c = s.cursor
                     fun up(f: (CursorSettings) -> CursorSettings) = vm.updateSettings { it.copy(cursor = f(it.cursor)) }
+                    SwitchRow("Virtual mouse", "Menus: drag anywhere to move a pointer and tap to click. Off: touch buttons and slots directly.", c.mode == CursorMode.TOUCHPAD) { v -> up { it.withVirtualMouse(v) } }
+                    SwitchRow("Show pointer on touch", "Direct touch only: draw the pointer where your finger is", c.pointerOnTouch, enabled = c.mode != CursorMode.TOUCHPAD) { v -> up { it.withPointerOnTouch(v) } }
                     ChoiceRow("Mode", CursorMode.entries, c.mode, label = { it.name.lowercase().replaceFirstChar(Char::uppercase) }) { v -> up { it.copy(mode = v) } }
                     Text(when (c.mode) { CursorMode.DESKTOP -> "The pointer jumps to your finger in menus."; CursorMode.TOUCHPAD -> "Drag anywhere to move the pointer like a laptop touchpad; tap to click."
                         CursorMode.IMMERSIVE -> "No visible pointer; touches act directly."; CursorMode.SMART -> "Camera control in game, visible pointer in menus and inventories." }, color = p.textMuted, fontSize = 12.sp)

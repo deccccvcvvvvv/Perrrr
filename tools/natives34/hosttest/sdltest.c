@@ -71,6 +71,7 @@ int main(int argc, char **argv) {
     CHECK(win != NULL, "game window");
     SDL_GetWindowSize(win, &w, &h); CHECK(w == 1600 && h == 720, "game window is the render surface, got %dx%d", w, h);
     CHECK(mock.readyW == 1600 && mock.readyH == 720, "activity told the window is ready");
+    CHECK(mock.cursorModeCalls == 1 && mock.cursorGrabbed == 0, "initial free pointer reported with the game window (calls %d)", mock.cursorModeCalls);
     CHECK(mock.surfacesCreated == 1, "still one shared surface");
     CHECK(next_event(&e, SDL_EVENT_WINDOW_RESIZED) && e.window.data1 == 1600 && e.window.data2 == 720 && e.window.windowID == SDL_GetWindowID(win), "resize event at creation");
     SDL_GL_MakeCurrent(win, ctx);
@@ -138,7 +139,9 @@ int main(int argc, char **argv) {
 
     /* --- rotation/resume: the activity hands over a new surface; next swap rebuilds it and reports the new size */
     pthread_mutex_lock(&g_winMu); g_surfaceGeneration = 2; g_renderW = 1200; g_renderH = 540; pthread_mutex_unlock(&g_winMu);
+    long framesBefore = g_frameCount;
     CHECK(SDL_GL_SwapWindow(win), "swap");
+    CHECK(g_frameCount == framesBefore + 1, "presented frame counted for the FPS read-out");
     CHECK(mock.swaps == 1 && mock.surfacesCreated == 2 && mock.liveSurfaces == 1 && g_surfaceAckGeneration == 2, "surface recreated (%d created, %d live)", mock.surfacesCreated, mock.liveSurfaces);
     CHECK(mock.curContext != NULL && mock.curSurface == (EGLSurface)(intptr_t)0x102, "context rebound to the new surface");
     SDL_GetWindowSizeInPixels(win, &w, &h); CHECK(w == 1200 && h == 540, "new size %dx%d", w, h);

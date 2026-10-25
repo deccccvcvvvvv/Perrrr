@@ -14,13 +14,15 @@ import pro.cslauncher.core.util.*
     @Serializable @SerialName("toggle_overlay") data object ToggleOverlay : InputAction()
     @Serializable @SerialName("record") data object ToggleRecording : InputAction()
     @Serializable @SerialName("menu") data object LauncherMenu : InputAction()
+    /** Switches menus between direct touch and the virtual mouse (touchpad-style pointer). */
+    @Serializable @SerialName("virtual_mouse") data object ToggleVirtualMouse : InputAction()
 
     fun describe(): String = when (this) {
         is Key -> Glfw.names[key] ?: "Key $key"
         is Mouse -> when (button) { 0 -> "Left click"; 1 -> "Right click"; 2 -> "Middle click"; else -> "Mouse $button" }
         is Scroll -> if (dy > 0) "Scroll up" else "Scroll down"
         is SwitchMode -> "Mode: $mode"
-        ShowKeyboard -> "Keyboard"; ToggleOverlay -> "Hide controls"; ToggleRecording -> "Record"; LauncherMenu -> "Menu"
+        ShowKeyboard -> "Keyboard"; ToggleOverlay -> "Hide controls"; ToggleRecording -> "Record"; LauncherMenu -> "Menu"; ToggleVirtualMouse -> "Virtual mouse"
     }
 }
 
@@ -155,6 +157,8 @@ object DefaultLayouts {
         ControlElement("inv_keyboard", ElementKind.BUTTON, "⌨", null, 0.06f, 0.30f, 44f, 40f, actions = listOf(InputAction.ShowKeyboard), behavior = ButtonBehavior.TAP),
         ControlElement("inv_scroll_up", ElementKind.BUTTON, "▲", null, 0.94f, 0.45f, 44f, 40f, actions = listOf(InputAction.Scroll(1f)), behavior = ButtonBehavior.REPEAT),
         ControlElement("inv_scroll_down", ElementKind.BUTTON, "▼", null, 0.94f, 0.60f, 44f, 40f, actions = listOf(InputAction.Scroll(-1f)), behavior = ButtonBehavior.REPEAT),
+        ControlElement("inv_mouse", ElementKind.BUTTON, "Mouse", null, 0.06f, 0.52f, 56f, 40f, actions = listOf(InputAction.ToggleVirtualMouse), behavior = ButtonBehavior.TAP),
+        ControlElement("inv_menu", ElementKind.BUTTON, "☰", null, 0.80f, 0.10f, 40f, 36f, actions = listOf(InputAction.LauncherMenu), behavior = ButtonBehavior.TAP),
     )
     private val chatMode = listOf(
         ControlElement("chat_keyboard", ElementKind.BUTTON, "⌨ Type", null, 0.5f, 0.12f, 96f, 40f, actions = listOf(InputAction.ShowKeyboard), behavior = ButtonBehavior.TAP),
@@ -162,6 +166,7 @@ object DefaultLayouts {
         key("chat_esc", "Esc", 0.06f, 0.12f, Glfw.KEY_ESCAPE, 46f, 40f, ButtonBehavior.TAP),
         key("chat_up", "↑", 0.80f, 0.12f, Glfw.KEY_UP, 40f, 40f, ButtonBehavior.REPEAT),
         key("chat_tab", "Tab", 0.70f, 0.12f, Glfw.KEY_TAB, 46f, 40f, ButtonBehavior.TAP),
+        ControlElement("chat_menu", ElementKind.BUTTON, "☰", null, 0.30f, 0.12f, 40f, 40f, actions = listOf(InputAction.LauncherMenu), behavior = ButtonBehavior.TAP),
     )
 
     fun defaultTouch() = ControlLayout(id = "default-touch", name = "Default Touch",

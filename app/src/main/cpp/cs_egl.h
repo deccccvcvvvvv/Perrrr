@@ -37,6 +37,9 @@ extern EGLBoolean (*p_eglBindAPI)(EGLenum);
 extern EGLint (*p_eglGetError)(void);
 extern void *(*p_eglGetProcAddress)(const char *);
 
+/* Frames presented by the game (glfwSwapBuffers / SDL_GL_SwapWindow); read by the launcher's FPS read-out. */
+extern volatile long g_frameCount;
+
 int cs_load_backend(void);              /* idempotent; 1 on success */
 ANativeWindow *cs_wait_window(void);    /* blocks until the activity provides a window; returns an acquired reference */
 

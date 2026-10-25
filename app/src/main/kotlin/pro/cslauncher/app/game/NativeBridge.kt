@@ -33,6 +33,8 @@ object NativeBridge {
     @JvmStatic external fun sendScroll(dx: Double, dy: Double)
     @JvmStatic external fun sendFocus(focused: Boolean)
     @JvmStatic external fun requestClose()
+    /** Frames the game has presented since start (FPS read-out = difference per second). */
+    @JvmStatic external fun frameCount(): Long
 
     // ---- VM ----
     @JvmStatic external fun redirectStdio(logPath: String): Boolean

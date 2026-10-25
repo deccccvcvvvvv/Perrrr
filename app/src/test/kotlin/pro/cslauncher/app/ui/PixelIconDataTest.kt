@@ -9,7 +9,7 @@ class PixelIconDataTest {
     private val usedByUi = listOf(
         "home", "grass", "search", "download", "settings", "play", "pickaxe", "painting", "chest", "world", "book", "gamepad", "shield", "record",
         "image", "head", "back", "plus", "more", "trash", "edit", "check", "close", "refresh", "folder", "info", "warning", "sun", "bolt", "star",
-        "user_add", "list", "upload", "stop",
+        "user_add", "list", "upload", "stop", "mouse", "keyboard", "eye", "camera", "terminal", "door", "chat", "hand", "chart",
     )
 
     @Test fun everyIconIs12x12AndUsesKnownColours() {

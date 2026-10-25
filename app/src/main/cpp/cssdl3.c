@@ -212,6 +212,7 @@ SDL_EXPORT SDL_Window *SDL_CreateWindow(const char *title, int w, int h, SDL_Win
         g_gameWindow = win;
         win->flags = (flags & ~(SDL_WindowFlags)SDL_WINDOW_HIDDEN) | SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_MOUSE_FOCUS;
         cs_host_window_ready(win->w, win->h);
+        cs_host_cursor_mode(win->relative ? 1 : 0);   /* starts with a free pointer (title screen); see csglfw.c */
         push_window_event(SDL_EVENT_WINDOW_SHOWN, win, 0, 0);
         push_window_event(SDL_EVENT_WINDOW_RESIZED, win, win->w, win->h);
         push_window_event(SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED, win, win->w, win->h);
@@ -459,6 +460,7 @@ SDL_EXPORT bool SDL_GL_SetSwapInterval(int i) { g_swapInterval = i < 0 ? 1 : i; 
 SDL_EXPORT bool SDL_GL_GetSwapInterval(int *i) { if (i) *i = g_swapInterval; return true; }
 SDL_EXPORT bool SDL_GL_SwapWindow(SDL_Window *win) {
     if (g_surface != EGL_NO_SURFACE && !p_eglSwapBuffers(g_dpy, g_surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError());
+    if (win && win == g_gameWindow) __atomic_add_fetch(&g_frameCount, 1, __ATOMIC_RELAXED);
     handle_surface_change();
     return true;
 }

@@ -27,6 +27,17 @@ class TouchOverlayView(ctx: Context, val engine: TouchEngine, private val cursor
     private val rect = RectF()
     var recording: Boolean = false; set(v) { field = v; invalidate() }
     var recordingPaused: Boolean = false; set(v) { field = v; invalidate() }
+    /** Global opacity multiplier for every control (in-game menu / settings). */
+    var opacityScale: Float = 1f; set(v) { field = v; invalidate() }
+    /** Top-edge tab that opens the in-game menu regardless of the layout. */
+    var showMenuHandle: Boolean = true; set(v) { field = v; invalidate() }
+    var onMenuHandle: () -> Unit = {}
+    /** Frame-rate / memory read-out, null when off. */
+    var hud: String? = null; set(v) { if (v != field) { field = v; invalidate() } }
+    private var handlePointer = -1
+    private val hudText = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * density; color = 0xFFFFFFFF.toInt(); typeface = Typeface.MONOSPACE }
+    private fun handleRect(r: RectF) { val w = 64f * density; val h = 26f * density; r.set(width / 2f - w / 2, 0f, width / 2f + w / 2, h) }
+    private val handleHit = RectF()
     private val ticker = object : Runnable {
         override fun run() { engine.tick(SystemClock.uptimeMillis()); if (activePointers > 0) postDelayed(this, 16) }
     }
@@ -42,15 +53,24 @@ class TouchOverlayView(ctx: Context, val engine: TouchEngine, private val cursor
         val t = e.eventTime
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                val i = e.actionIndex; engine.onPointerDown(e.getPointerId(i), e.getX(i), e.getY(i), t)
+                val i = e.actionIndex
+                handleRect(handleHit)
+                if (showMenuHandle && handlePointer < 0 && handleHit.contains(e.getX(i), e.getY(i))) { handlePointer = e.getPointerId(i); invalidate(); return true }
+                engine.onPointerDown(e.getPointerId(i), e.getX(i), e.getY(i), t)
                 if (activePointers++ == 0) postDelayed(ticker, 16)
             }
-            MotionEvent.ACTION_MOVE -> for (i in 0 until e.pointerCount) engine.onPointerMove(e.getPointerId(i), e.getX(i), e.getY(i), t)
+            MotionEvent.ACTION_MOVE -> for (i in 0 until e.pointerCount) { val id = e.getPointerId(i); if (id != handlePointer) engine.onPointerMove(id, e.getX(i), e.getY(i), t) }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                val i = e.actionIndex; engine.onPointerUp(e.getPointerId(i), e.getX(i), e.getY(i), t)
+                val i = e.actionIndex; val id = e.getPointerId(i)
+                if (id == handlePointer) {
+                    handlePointer = -1; handleRect(handleHit)
+                    if (handleHit.contains(e.getX(i), e.getY(i))) { engine.cancelAll(); activePointers = 0; onMenuHandle() }
+                    invalidate(); return true
+                }
+                engine.onPointerUp(id, e.getX(i), e.getY(i), t)
                 activePointers = (activePointers - 1).coerceAtLeast(0)
             }
-            MotionEvent.ACTION_CANCEL -> { engine.cancelAll(); activePointers = 0 }
+            MotionEvent.ACTION_CANCEL -> { engine.cancelAll(); activePointers = 0; handlePointer = -1 }
         }
         invalidate()
         return true
@@ -60,7 +80,7 @@ class TouchOverlayView(ctx: Context, val engine: TouchEngine, private val cursor
         if (!engine.overlayHidden) {
             for ((el, r) in engine.visibleElements()) {
                 val active = engine.isElementActive(el.id)
-                val alpha = (el.opacity.coerceIn(0.05f, 1f) * (if (active) 1f else 0.8f) * 255).toInt()
+                val alpha = (el.opacity.coerceIn(0.05f, 1f) * opacityScale * (if (active) 1f else 0.8f) * 255).toInt().coerceIn(0, 255)
                 rect.set(r.left, r.top, r.right, r.bottom)
                 val radius = minOf(rect.width(), rect.height()) * el.cornerRadius.coerceIn(0f, 0.5f)
                 when (el.kind) {
@@ -84,10 +104,30 @@ class TouchOverlayView(ctx: Context, val engine: TouchEngine, private val cursor
             }
         }
         drawCursor(c)
+        if (showMenuHandle) drawMenuHandle(c)
+        hud?.let { drawHud(c, it) }
         if (recording) {
             fill.color = if (recordingPaused) 0xFFA5A7B2.toInt() else 0xFFE5484D.toInt(); fill.alpha = 230
             c.drawCircle(width - 18f * density, 18f * density, 6f * density, fill)
         }
+    }
+
+    /** Small pixel tab at the top centre: three bars, brighter while pressed. */
+    private fun drawMenuHandle(c: Canvas) {
+        val w = 44f * density; val h = 16f * density; val l = width / 2f - w / 2
+        val pressed = handlePointer >= 0
+        fill.color = 0xFF1E1E1F.toInt(); fill.alpha = if (pressed) 230 else 150; c.drawRect(l, 0f, l + w, h, fill)
+        fill.color = if (pressed) 0xFF6CC349.toInt() else 0xFF48494A.toInt(); fill.alpha = if (pressed) 255 else 170
+        c.drawRect(l + 2 * density, 0f, l + w - 2 * density, h - 2 * density, fill)
+        fill.color = 0xFFFFFFFF.toInt(); fill.alpha = if (pressed) 255 else 200
+        for (k in 0..2) { val y = 3f * density + k * 3.5f * density; c.drawRect(l + 12 * density, y, l + w - 12 * density, y + 1.5f * density, fill) }
+    }
+
+    private fun drawHud(c: Canvas, s: String) {
+        val lines = s.split('\n'); val pad = 6f * density; val lh = hudText.textSize * 1.25f
+        val w = lines.maxOf { hudText.measureText(it) } + 2 * pad; val h = lines.size * lh + 2 * pad - (lh - hudText.textSize)
+        fill.color = 0xFF000000.toInt(); fill.alpha = 120; c.drawRect(8f * density, 8f * density, 8f * density + w, 8f * density + h, fill)
+        lines.forEachIndexed { i, l -> c.drawText(l, 8f * density + pad, 8f * density + pad + hudText.textSize * 0.85f + i * lh, hudText) }
     }
 
     private fun drawCursor(c: Canvas) {

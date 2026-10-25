@@ -86,7 +86,12 @@ fun CsTheme(choice: ThemeChoice, reduceTransparency: Boolean, reduceMotion: Bool
     )
     val shapes = if (p.pixel) androidx.compose.foundation.shape.RoundedCornerShape(0).let { sq -> Shapes(sq, sq, sq, sq, sq) } else Shapes()
     CompositionLocalProvider(LocalPalette provides p, LocalReduceMotion provides reduceMotion, LocalGlassEnabled provides glassOk) {
-        MaterialTheme(colorScheme = scheme, typography = if (p.pixel) pixelTypography() else Typography(), shapes = shapes, content = content)
+        MaterialTheme(colorScheme = scheme, typography = if (p.pixel) pixelTypography() else Typography(), shapes = shapes) {
+            // Material3 Text does not read the typography by default; give plain Text calls the pixel font too
+            // (family only, so explicit sizes and line heights elsewhere stay as they are).
+            if (p.pixel) CompositionLocalProvider(androidx.compose.material3.LocalTextStyle provides TextStyle(fontFamily = Monocraft, letterSpacing = 0.sp), content = content)
+            else content()
+        }
     }
 }
 

@@ -116,6 +116,7 @@ static int g_monitorToken = 1; static void *g_monitorUser = NULL;
 static char g_versionString[] = "3.4.0 CS-Android EGL OSMesa";
 
 /* Android window handed over by the activity; guarded by g_winMu. */
+volatile long g_frameCount = 0;
 pthread_mutex_t g_winMu = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t g_winCv = PTHREAD_COND_INITIALIZER;
 ANativeWindow *g_nativeWindow = NULL;
@@ -212,6 +213,7 @@ CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendK
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendChar(JNIEnv *e, jclass c, jint cp, jint mods) { cs_event ev = { CS_EV_CHAR, cp, mods, 0, 0, 0, 0 }; cs_queue_push(&ev); }
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendMouseButton(JNIEnv *e, jclass c, jint b, jint action, jint mods) { cs_event ev = { CS_EV_MOUSE_BUTTON, b, action, mods, 0, 0, 0 }; cs_queue_push(&ev); }
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendCursorPos(JNIEnv *e, jclass c, jdouble x, jdouble y) { cs_event ev = { CS_EV_CURSOR_POS, 0, 0, 0, 0, x, y }; cs_queue_push(&ev); }
+CS_EXPORT JNIEXPORT jlong JNICALL Java_pro_cslauncher_app_game_NativeBridge_frameCount(JNIEnv *e, jclass c) { return (jlong)__atomic_load_n(&g_frameCount, __ATOMIC_RELAXED); }
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendCursorDelta(JNIEnv *e, jclass c, jdouble dx, jdouble dy) { cs_event ev = { CS_EV_CURSOR_POS, 1, 0, 0, 0, dx, dy }; cs_queue_push(&ev); }
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendScroll(JNIEnv *e, jclass c, jdouble dx, jdouble dy) { cs_event ev = { CS_EV_SCROLL, 0, 0, 0, 0, dx, dy }; cs_queue_push(&ev); }
 CS_EXPORT JNIEXPORT void JNICALL Java_pro_cslauncher_app_game_NativeBridge_sendFocus(JNIEnv *e, jclass c, jboolean f) { cs_event ev = { CS_EV_FOCUS, f ? 1 : 0, 0, 0, 0, 0, 0 }; cs_queue_push(&ev); }
@@ -423,6 +425,9 @@ CS_EXPORT void *glfwCreateWindow(int width, int height, const char *title, void 
     w->cursorX = w->width / 2.0; w->cursorY = w->height / 2.0;
     g_window = w;
     cs_host_window_ready(w->fbWidth, w->fbHeight);
+    /* The window starts with a free (visible) pointer - Minecraft's title screen never calls glfwSetInputMode for it,
+     * so report the initial state explicitly; otherwise the touch layer would assume camera mode until the first grab. */
+    cs_host_cursor_mode(0);
     LOGI("Window created %dx%d (requested %dx%d)", w->fbWidth, w->fbHeight, width, height);
     return w;
 }
@@ -641,6 +646,7 @@ CS_EXPORT void glfwSwapBuffers(void *wp) {
     CSWindow *w = wp; if (!w) return;
     if (g_ctxKind == CTX_OSMESA) blit_osmesa(w);
     else if (w->surface != EGL_NO_SURFACE && !p_eglSwapBuffers(g_dpy, w->surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError());
+    __atomic_add_fetch(&g_frameCount, 1, __ATOMIC_RELAXED);
     handle_surface_change(w);   /* pause/resume/rotation: recreate the surface on the game thread */
 }
 CS_EXPORT void glfwSwapInterval(int i) { if (t_current) { t_current->swapInterval = i; if (g_ctxKind != CTX_OSMESA) p_eglSwapInterval(g_dpy, i); } }

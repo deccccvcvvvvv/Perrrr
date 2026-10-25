@@ -32,8 +32,14 @@ class DynamicCursor(var settings: CursorSettings) {
         else -> if (grabbed) CursorMode.IMMERSIVE else settings.mode
     }
 
-    /** Hidden while the game captures the pointer for camera control; never visible in the launcher UI. */
-    val visible: Boolean get() = !grabbed && effectiveMode() != CursorMode.IMMERSIVE
+    /**
+     * Hidden while the game captures the pointer for camera control. In menus it is shown unless the user chose direct
+     * touch without a pointer (IMMERSIVE) - a real mouse always gets a visible pointer.
+     */
+    val visible: Boolean get() = !grabbed && (externalMouseActive || effectiveMode() != CursorMode.IMMERSIVE)
+
+    /** Virtual mouse = touchpad-style relative pointer in menus; off = touches act directly where the finger is. */
+    val virtualMouse: Boolean get() = settings.mode == CursorMode.TOUCHPAD
 
     fun onGrabChanged(g: Boolean) {
         grabbed = g

@@ -32,6 +32,8 @@ and a small C native layer (its own GLFW implementation plus an in-process JVM b
   * A full-screen editor with undo/redo, grid snap, and import/export of versioned JSON.
   * Keyboard, mouse and gamepad support.
   * Desktop/touchpad/immersive/smart cursor modes.
+  * Virtual mouse on/off switch (settings, control editor, in-game menu, bindable action), applied live.
+  * In-game menu: quick actions, live control tuning, live game/renderer log, FPS/memory info, optional FPS read-out.
 * **Recorder:** MediaProjection + MediaCodec + MediaMuxer in a foreground service.
   * Presets limited by the device encoders.
   * Pause/resume.

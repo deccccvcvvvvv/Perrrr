@@ -121,7 +121,14 @@ class MobileGluesBackend : RendererBackend {
     override val description = "OpenGL 4 on top of OpenGL ES 3.x. Recommended for Minecraft 1.17 and newer."
     override val license = "LGPL-2.1 (MobileGlues), Apache-2.0 (SPIRV-Cross), BSD/MIT (glslang)"
     override val requiredLibraries = listOf("libmobileglues.so")
-    override val options = emptyList<RendererOption>()   // MobileGlues reads its own config.json in MG_DIR_PATH
+    // Written to MobileGlues' own config.json (MG_DIR_PATH) by the game process, see [MobileGluesConfig].
+    override val options = listOf(
+        RendererOption("errorFilter", "Shader error filter", "Ignore GL errors from shader/program checks. Auto = partial for Minecraft 26.3+, which needs it (black screen otherwise), off for older versions.",
+            OptionType.CHOICE, "auto", listOf("auto", "off", "partial", "full")),
+        RendererOption("glVersion", "Reported OpenGL version", "Version MobileGlues reports to the game. Auto = 4.0.", OptionType.CHOICE, "auto", listOf("auto", "33", "40", "43", "46")),
+        RendererOption("glslCache", "Shader cache", "Keep translated shaders (32 MB) so later launches load faster", OptionType.BOOL, "1"),
+        RendererOption("dsa", "Direct state access", "Expose GL_ARB_direct_state_access (faster on some drivers, may misrender)", OptionType.BOOL, "0", experimental = true),
+    )
     override fun status(env: RendererEnvironment): RendererStatus = when {
         !env.platform.isAndroid -> RendererStatus(RendererState.NOT_APPLICABLE, "Android only")
         !env.gameUsesLwjgl3 -> RendererStatus(RendererState.GAME_UNSUPPORTED, "LWJGL 2 versions are not supported")
@@ -131,8 +138,37 @@ class MobileGluesBackend : RendererBackend {
     }
     override fun configure(env: RendererEnvironment, options: Map<String, String>): RendererConfig {
         val mg = env.libraries.getValue("libmobileglues.so")
-        return RendererConfig(id, ContextKind.EGL_DESKTOP, mg, mg, null, env = emptyMap(),
+        val o = sanitize(options)
+        return RendererConfig(id, ContextKind.EGL_DESKTOP, mg, mg, null, env = mapOf(MobileGluesConfig.ENV to MobileGluesConfig.json(o, env.gameUsesSdl)),
             jvmProps = mapOf("org.lwjgl.opengl.libname" to mg.toString(), "org.lwjgl.egl.libname" to mg.toString()))
+    }
+}
+
+/**
+ * MobileGlues reads config.json from MG_DIR_PATH (keys and enum values from its config/config.cpp and settings.h).
+ * Without the file it disables error filtering, and Minecraft 26.3+ then renders only black after the loading screen
+ * (MobileGlues release notes: "Ignore shader/program error is required to run 26.3-snapshot-3 and later").
+ * The launcher passes the JSON through the plan environment; the game process writes the file before starting the VM.
+ */
+object MobileGluesConfig {
+    const val ENV = "CS_MG_CONFIG"
+    /** NoErrorConfig: 0 auto (= none), 1 disable, 2 level 1 (partial), 3 level 2 (full). */
+    fun noErrorLevel(choice: String?, gameUsesSdl: Boolean): Int = when (choice) { "off" -> 1; "partial" -> 2; "full" -> 3; else -> if (gameUsesSdl) 2 else 0 }
+    fun json(o: Map<String, String>, gameUsesSdl: Boolean): String {
+        val gl = o["glVersion"]?.toIntOrNull() ?: 0          // 0 = MobileGlues default (4.0)
+        val entries = linkedMapOf(
+            "enableANGLE" to 0,                                // DisableIfPossible: ANGLE is not bundled with MobileGlues
+            "enableNoError" to noErrorLevel(o["errorFilter"], gameUsesSdl),
+            "enableExtComputeShader" to 0,
+            "enableExtTimerQuery" to 0,
+            "enableExtDirectStateAccess" to (if (o["dsa"] == "1") 1 else 0),
+            "maxGlslCacheSize" to (if (o["glslCache"] == "0") 0 else 32),
+            "angleDepthClearFixMode" to 0,
+            "customGLVersion" to gl,
+            "fsr1Setting" to 0,
+            "hideMGEnvLevel" to 0,
+        )
+        return entries.entries.joinToString(",\n  ", "{\n  ", "\n}\n") { (k, v) -> "\"$k\": $v" }
     }
 }
 

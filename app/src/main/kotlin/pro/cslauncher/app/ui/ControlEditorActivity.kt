@@ -1,5 +1,9 @@
 package pro.cslauncher.app.ui
 
+import pro.cslauncher.core.settings.withVirtualMouse
+import pro.cslauncher.core.settings.withPointerOnTouch
+import pro.cslauncher.core.settings.pointerOnTouch
+import androidx.compose.runtime.collectAsState
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -225,6 +229,19 @@ open class ControlEditorActivity : ComponentActivity() {
                     FilterChip(grid, { grid = !grid }, label = { Text("Snap to grid") })
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
+                Text("Mouse & touch", color = p.textSecondary, fontSize = 12.sp)
+                val cs by pro.cslauncher.app.Services.settings.state.collectAsState()
+                fun cursorUp(f: (pro.cslauncher.core.settings.CursorSettings) -> pro.cslauncher.core.settings.CursorSettings) =
+                    pro.cslauncher.app.Services.settings.update { it.copy(cursor = f(it.cursor)) }
+                FlowRowCompat {
+                    FilterChip(cs.cursor.mode == pro.cslauncher.core.settings.CursorMode.TOUCHPAD, { cursorUp { it.withVirtualMouse(it.mode != pro.cslauncher.core.settings.CursorMode.TOUCHPAD) } },
+                        label = { Text("Virtual mouse") }, modifier = Modifier.padding(end = 4.dp))
+                    FilterChip(cs.cursor.pointerOnTouch, { cursorUp { it.withPointerOnTouch(!it.pointerOnTouch) } }, enabled = cs.cursor.mode != pro.cslauncher.core.settings.CursorMode.TOUCHPAD,
+                        label = { Text("Pointer on touch") })
+                }
+                Text(if (cs.cursor.mode == pro.cslauncher.core.settings.CursorMode.TOUCHPAD) "Menus: drag to move the pointer, tap to click." else "Menus: touch buttons and slots directly.",
+                    color = p.textMuted, fontSize = 11.sp)
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
                 MenuItem("Layouts…") { layouts = true; menu = false }
                 MenuItem("Export to file") { exportLauncher.launch("${editor.current.id}.json"); menu = false }
                 MenuItem("Import from file") { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")); menu = false }
@@ -397,7 +414,7 @@ open class ControlEditorActivity : ComponentActivity() {
                 add("Modifiers" to k(listOf(Glfw.KEY_LEFT_SHIFT, Glfw.KEY_RIGHT_SHIFT, Glfw.KEY_LEFT_CONTROL, Glfw.KEY_RIGHT_CONTROL, Glfw.KEY_LEFT_ALT, Glfw.KEY_RIGHT_ALT, Glfw.KEY_CAPS_LOCK)))
                 add("Navigation" to k(listOf(Glfw.KEY_UP, Glfw.KEY_DOWN, Glfw.KEY_LEFT, Glfw.KEY_RIGHT, Glfw.KEY_PAGE_UP, Glfw.KEY_PAGE_DOWN, Glfw.KEY_HOME, Glfw.KEY_END, Glfw.KEY_INSERT, Glfw.KEY_DELETE, Glfw.KEY_BACKSPACE)))
                 add("Symbols" to k(listOf(Glfw.KEY_MINUS, Glfw.KEY_EQUAL, Glfw.KEY_LEFT_BRACKET, Glfw.KEY_RIGHT_BRACKET, Glfw.KEY_BACKSLASH, Glfw.KEY_SEMICOLON, Glfw.KEY_APOSTROPHE, Glfw.KEY_COMMA, Glfw.KEY_PERIOD, Glfw.KEY_SLASH, Glfw.KEY_GRAVE)))
-                if (!keysOnly) add("Launcher" to (listOf(InputAction.ShowKeyboard, InputAction.ToggleOverlay, InputAction.ToggleRecording, InputAction.LauncherMenu) +
+                if (!keysOnly) add("Launcher" to (listOf(InputAction.ShowKeyboard, InputAction.ToggleOverlay, InputAction.ToggleRecording, InputAction.LauncherMenu, InputAction.ToggleVirtualMouse) +
                     layout.modes.keys.filter { it != mode }.map { InputAction.SwitchMode(it) }))
             }
         }
