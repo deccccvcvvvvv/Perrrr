@@ -266,8 +266,12 @@ static int load_backend(void) {
     EGLint renderable = g_ctxKind == CTX_EGL_DESKTOP ? EGL_OPENGL_BIT : g_ctxKind == CTX_EGL_GLES3 ? 0x40 /* EGL_OPENGL_ES3_BIT */ : EGL_OPENGL_ES2_BIT;
     const EGLint attrs[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, renderable, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
                              EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_STENCIL_SIZE, 8, EGL_NONE };
+    /* Preferred: the same config but also usable for a video-encoder surface (clean recording, record_gl.c). */
+    const EGLint recordable[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, renderable, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
+                                  EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_STENCIL_SIZE, 8, 0x3142 /* EGL_RECORDABLE_ANDROID */, 1, EGL_NONE };
     EGLint n = 0;
-    if (!p_eglChooseConfig(g_dpy, attrs, &g_cfg, 1, &n) || n < 1) {
+    if (p_eglChooseConfig(g_dpy, recordable, &g_cfg, 1, &n) && n >= 1) { /* recordable config found */ }
+    else if (!p_eglChooseConfig(g_dpy, attrs, &g_cfg, 1, &n) || n < 1) {
         const EGLint relaxed[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, renderable, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_DEPTH_SIZE, 16, EGL_NONE };
         if (!p_eglChooseConfig(g_dpy, relaxed, &g_cfg, 1, &n) || n < 1) { glfw_error(GLFW_PLATFORM_ERROR, "No suitable EGL config"); return 0; }
     }
@@ -645,7 +649,7 @@ static void blit_osmesa(CSWindow *w) {
 CS_EXPORT void glfwSwapBuffers(void *wp) {
     CSWindow *w = wp; if (!w) return;
     if (g_ctxKind == CTX_OSMESA) blit_osmesa(w);
-    else if (w->surface != EGL_NO_SURFACE && !p_eglSwapBuffers(g_dpy, w->surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError());
+    else if (w->surface != EGL_NO_SURFACE) { cs_record_frame(); if (!p_eglSwapBuffers(g_dpy, w->surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError()); }
     __atomic_add_fetch(&g_frameCount, 1, __ATOMIC_RELAXED);
     handle_surface_change(w);   /* pause/resume/rotation: recreate the surface on the game thread */
 }

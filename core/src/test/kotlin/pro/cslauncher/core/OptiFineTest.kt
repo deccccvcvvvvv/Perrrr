@@ -167,6 +167,7 @@ class OptiFineTest {
         val dir = System.getProperty("cs.optifineDir").orEmpty()
         if (dir.isBlank()) return
         val d = Paths.get(dir)
+        if (listOf("vanilla.jar", "OptiFine.jar", "ref.jar").any { !java.nio.file.Files.isRegularFile(d.resolve(it)) }) return   // fixtures not present on this host
         val out = tempDir("ofreal").resolve("out.jar")
         val (patched, _) = OptiFineInstaller(tempDir("ofd").let { LauncherDirs(it) }).patch(d.resolve("vanilla.jar"), d.resolve("OptiFine.jar"), out)
         assertTrue(patched > 1000)

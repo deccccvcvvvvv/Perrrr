@@ -119,38 +119,39 @@ fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader(section.title + (profile?.let { " · ${it.name}" } ?: ""), onBack) {
             if (section in setOf(ContentSection.MODS, ContentSection.RESOURCE_PACKS, ContentSection.SHADERS, ContentSection.WORLDS))
-                PixelButton("Import file", { importer.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream", "*/*")) }, icon = "folder", height = 40.dp)
+                HeaderAction("Import file", "folder", { importer.launch(arrayOf("application/zip", "application/java-archive", "application/octet-stream", "*/*")) })
         }
         if (profile == null && section != ContentSection.RECORDINGS) { Text("Select a profile first.", color = p.textMuted, modifier = Modifier.padding(16.dp)); return@Column }
-        if (entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            PixelIcon(when (section) { ContentSection.MODS -> "pickaxe"; ContentSection.WORLDS -> "world"; ContentSection.SCREENSHOTS -> "image"; ContentSection.RECORDINGS -> "record"; else -> "painting" }, size = 56.dp)
-            Text("Nothing here yet.", color = p.textMuted, modifier = Modifier.padding(top = 10.dp))
+        if (entries.isEmpty()) Column(Modifier.fillMaxWidth().padding(top = 36.dp, start = 24.dp, end = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            PixelIcon(when (section) { ContentSection.MODS -> "pickaxe"; ContentSection.WORLDS -> "world"; ContentSection.SCREENSHOTS -> "image"; ContentSection.RECORDINGS -> "record"; else -> "painting" }, size = 48.dp)
+            PixelTitle("Nothing here yet", Modifier.padding(top = 10.dp), fontSize = 14.sp)
             if (section != ContentSection.SCREENSHOTS && section != ContentSection.RECORDINGS && section != ContentSection.WORLDS)
-                Text("Use Browse to find ${section.title.lowercase()} for this profile, or import a file.", color = p.textMuted, fontSize = 12.sp)
+                Text("Use Browse to find ${section.title.lowercase()} for this profile, or import a file.", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
         }
-        LazyVerticalGrid(GridCells.Adaptive(if (section == ContentSection.SCREENSHOTS) 240.dp else 330.dp), Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+        LazyVerticalGrid(GridCells.Adaptive(if (section == ContentSection.SCREENSHOTS) 200.dp else 300.dp), Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp)) {
             itemsIndexed(entries, key = { _, it -> it.key }) { i, e ->
-                PixelPanel(Modifier.fillMaxWidth().staggerIn(i % 14), padding = 8.dp) {
+                val inline = section == ContentSection.MODS || section == ContentSection.RESOURCE_PACKS
+                PixelPanel(Modifier.fillMaxWidth().staggerIn(i % 14), padding = 7.dp) {
                     if (section == ContentSection.SCREENSHOTS) {
                         val bmp = remember(e.key) { BitmapFactory.decodeFile(e.key, BitmapFactory.Options().apply { inSampleSize = 4 })?.asImageBitmap() }
-                        bmp?.let { Image(it, e.title, Modifier.fillMaxWidth().heightIn(max = 150.dp)) }
+                        bmp?.let { Image(it, e.title, Modifier.fillMaxWidth().heightIn(max = 112.dp).padding(bottom = 4.dp)) }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (section in setOf(ContentSection.MODS, ContentSection.RESOURCE_PACKS, ContentSection.SHADERS, ContentSection.WORLDS)) {
-                            PixelSlot(size = 48.dp) {
+                            PixelSlot(size = 40.dp) {
                                 val fallback = when (section) { ContentSection.MODS -> "pickaxe"; ContentSection.WORLDS -> "world"; ContentSection.SHADERS -> "sun"; else -> "painting" }
                                 BytesImage("icon:" + e.key + ":" + (e.archiveIcon ?: ""), {
                                     if (section == ContentSection.WORLDS) e.path.resolve("icon.png").toFile().takeIf { it.isFile && it.length() < (1 shl 20) }?.readBytes()
                                     else ModInspector.readIcon(e.path, e.archiveIcon)
-                                }, 36.dp, fallbackIcon = fallback)
+                                }, 30.dp, fallbackIcon = fallback)
                             }
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(8.dp))
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(e.title, color = Color.White, fontFamily = Monocraft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(e.subtitle, color = p.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            e.warning?.let { Text(it, color = p.warning, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                            Text(e.title, color = Color.White, fontFamily = Monocraft, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(e.subtitle, color = p.textSecondary, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            e.warning?.let { Text(it, color = p.warning, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                         }
                         if (e.enabled != null && section != ContentSection.SHADERS) PixelToggle(e.enabled, { on ->
                             act {
@@ -162,27 +163,28 @@ fun ContentScreen(vm: LauncherViewModel, section: ContentSection, onBack: () -> 
                                 }
                             }
                         })
+                        if (inline) { Spacer(Modifier.width(6.dp)); PixelIconButton("trash", if (section == ContentSection.MODS) "Remove" else "Delete", { confirm = e }, style = PxStyle.DANGER, size = 30.dp) }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!inline) Spacer(Modifier.height(6.dp))
+                    if (!inline) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         when (section) {
                             ContentSection.SHADERS -> PixelButton(if (e.enabled == true) "Deactivate" else "Activate", { act { val sp = ShaderPackManager(gameDir!!); val l = sp.detectLoader(ModManager(gameDir).list()); sp.setActive(l, if (e.enabled == true) null else e.path.fileName.toString()) } },
-                                style = if (e.enabled == true) PxStyle.SELECTED else PxStyle.NORMAL, height = 34.dp)
+                                style = if (e.enabled == true) PxStyle.SELECTED else PxStyle.NORMAL, height = 30.dp, fontSize = 11.sp)
                             ContentSection.WORLDS -> {
-                                PixelButton("Back up", { act { val b = WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).backup(e.path); vm.toast("Backup saved: ${b.fileName}") } }, icon = "shield", height = 34.dp)
+                                PixelButton("Back up", { act { val b = WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).backup(e.path); vm.toast("Backup saved: ${b.fileName}") } }, icon = "shield", height = 30.dp, fontSize = 11.sp)
                                 PixelButton("Export", { scope.launch {
                                     val out = File(ctx.cacheDir, "exports").apply { mkdirs() }.resolve("${e.path.fileName}.zip").toPath()
                                     val ok = withContext(Dispatchers.IO) { runCatching { Files.deleteIfExists(out); WorldManager(gameDir!!, Services.dirs.backups.resolve("worlds")).export(e.path, out) } }
                                     ok.exceptionOrNull()?.let { vm.toast(it.message) } ?: shareCache(ctx, out.toFile())
-                                } }, icon = "upload", height = 34.dp)
+                                } }, icon = "upload", height = 30.dp, fontSize = 11.sp)
                             }
-                            ContentSection.SCREENSHOTS -> PixelButton("Share", { share(e.path, "image/png") }, icon = "upload", height = 34.dp)
-                            ContentSection.RECORDINGS -> { PixelButton("Play", { share(e.path, "video/mp4", view = true) }, icon = "play", height = 34.dp)
-                                PixelButton("Share", { share(e.path, "video/mp4") }, icon = "upload", height = 34.dp) }
+                            ContentSection.SCREENSHOTS -> PixelButton("Share", { share(e.path, "image/png") }, icon = "upload", height = 30.dp, fontSize = 11.sp)
+                            ContentSection.RECORDINGS -> { PixelButton("Play", { share(e.path, "video/mp4", view = true) }, icon = "play", height = 30.dp, fontSize = 11.sp)
+                                PixelButton("Share", { share(e.path, "video/mp4") }, icon = "upload", height = 30.dp, fontSize = 11.sp) }
                             else -> {}
                         }
                         Spacer(Modifier.weight(1f))
-                        PixelIconButton("trash", if (section == ContentSection.MODS) "Remove" else "Delete", { confirm = e }, style = PxStyle.DANGER, size = 34.dp)
+                        PixelIconButton("trash", if (section == ContentSection.MODS) "Remove" else "Delete", { confirm = e }, style = PxStyle.DANGER, size = 30.dp)
                     }
                 }
             }

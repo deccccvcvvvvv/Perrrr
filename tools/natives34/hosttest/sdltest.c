@@ -14,6 +14,7 @@
 #include "mock.h"
 
 static int fails = 0, checks = 0;
+extern int g_recordFrames;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf("FAIL %s:%d: %s -- ", __FILE__, __LINE__, #c); printf(__VA_ARGS__); printf(" (SDL_GetError: %s)\n", SDL_GetError()); } } while (0)
 
 static int next_event(SDL_Event *e, Uint32 type) {   /* polls until an event of `type` (others are skipped) */
@@ -139,9 +140,10 @@ int main(int argc, char **argv) {
 
     /* --- rotation/resume: the activity hands over a new surface; next swap rebuilds it and reports the new size */
     pthread_mutex_lock(&g_winMu); g_surfaceGeneration = 2; g_renderW = 1200; g_renderH = 540; pthread_mutex_unlock(&g_winMu);
-    long framesBefore = g_frameCount;
+    long framesBefore = g_frameCount; int recBefore = g_recordFrames;
     CHECK(SDL_GL_SwapWindow(win), "swap");
     CHECK(g_frameCount == framesBefore + 1, "presented frame counted for the FPS read-out");
+    CHECK(g_recordFrames == recBefore + 1, "clean-recording hook runs once per presented game frame");
     CHECK(mock.swaps == 1 && mock.surfacesCreated == 2 && mock.liveSurfaces == 1 && g_surfaceAckGeneration == 2, "surface recreated (%d created, %d live)", mock.surfacesCreated, mock.liveSurfaces);
     CHECK(mock.curContext != NULL && mock.curSurface == (EGLSurface)(intptr_t)0x102, "context rebound to the new surface");
     SDL_GetWindowSizeInPixels(win, &w, &h); CHECK(w == 1200 && h == 540, "new size %dx%d", w, h);

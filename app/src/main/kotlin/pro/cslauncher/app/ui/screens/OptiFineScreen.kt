@@ -12,7 +12,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,26 +105,26 @@ fun OptiFineScreen(vm: LauncherViewModel, profileId: String?, versionHint: Strin
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("OptiFine", onBack) {
-            PixelButton("Pick jar file", { picker.launch(arrayOf("application/java-archive", "application/octet-stream", "*/*")) }, icon = "folder", height = 40.dp)
+            HeaderAction("Pick jar file", "folder", { picker.launch(arrayOf("application/java-archive", "application/octet-stream", "*/*")) })
         }
-        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.width(300.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                PixelPanel(Modifier.fillMaxWidth()) {
-                    PixelTitle("How it works", fontSize = 14.sp)
+        Row(Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.width(250.dp).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                PixelPanel(Modifier.fillMaxWidth(), padding = 8.dp) {
+                    PixelTitle("How it works", fontSize = 13.sp)
                     Text("1. On optifine.net find ${wantVersion?.let { "Minecraft $it" } ?: "your Minecraft version"} and tap Download (or Mirror).\n" +
                         "2. Tap the download button on the next page. CS Launcher catches the jar automatically.\n" +
                         "3. Tap Install. Minecraft, OptiFine and its launch profile are set up locally.",
-                        color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                        color = p.textSecondary, fontSize = 10.sp, lineHeight = 13.sp, modifier = Modifier.padding(top = 4.dp))
                     Text("OptiFine is made by sp614x and may not be redistributed, so it is always downloaded from the official site. Already have the jar? Use “Pick jar file”.",
-                        color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                        color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 }
-                Spacer(Modifier.height(10.dp))
-                PixelPanel(Modifier.fillMaxWidth(), selected = info != null) {
+                Spacer(Modifier.height(8.dp))
+                PixelPanel(Modifier.fillMaxWidth(), selected = info != null, padding = 8.dp) {
                     val i = info
                     if (i == null) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PixelIcon("bolt", size = 24.dp); Spacer(Modifier.width(8.dp))
-                            Text(status ?: "Waiting for an OptiFine jar…", color = if (status != null) p.danger else p.textSecondary, fontSize = 12.sp)
+                            PixelIcon("bolt", size = 20.dp); Spacer(Modifier.width(8.dp))
+                            Text(status ?: "Waiting for an OptiFine jar…", color = if (status != null) p.danger else p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
                         }
                     } else {
                         PixelTitle(i.fullVersion.removePrefix("OptiFine_").replace('_', ' '), fontSize = 14.sp)
@@ -134,12 +137,12 @@ fun OptiFineScreen(vm: LauncherViewModel, profileId: String?, versionHint: Strin
                         PixelButton("Install OptiFine", {
                             val f = jar ?: return@PixelButton
                             if (vm.installOptiFine(f, profileId)) installKey = "task:optifine-${i.versionId}"
-                        }, Modifier.fillMaxWidth(), style = PxStyle.PRIMARY, icon = "download", enabled = job?.active != true)
+                        }, Modifier.fillMaxWidth(), style = PxStyle.PRIMARY, icon = "download", enabled = job?.active != true, height = 36.dp)
                     }
                     if (job != null) {
                         Spacer(Modifier.height(8.dp))
-                        PixelProgress(job.fraction)
-                        Text("${job.stage} ${job.message}".trim(), color = p.textSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        JobProgress(job, compact = true)
+                        Text("${job.stage} ${job.message}".trim(), color = p.textSecondary, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
                         when (job.status) {
                             pro.cslauncher.app.install.JobStatus.DONE -> PixelButton("Done · back", onBack, Modifier.fillMaxWidth().padding(top = 6.dp), style = PxStyle.PRIMARY, icon = "check")
                             pro.cslauncher.app.install.JobStatus.FAILED -> Text("Failed: ${job.message}", color = p.danger, fontSize = 11.sp)
@@ -147,17 +150,19 @@ fun OptiFineScreen(vm: LauncherViewModel, profileId: String?, versionHint: Strin
                         }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                Text("No OptiFine exists for Minecraft 26.3 yet; newest builds are previews for 26.2/26.1.", color = p.textMuted, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("No OptiFine exists for Minecraft 26.3 yet; newest builds are previews for 26.2/26.1.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp)
             }
             PixelPanel(Modifier.weight(1f).fillMaxHeight(), padding = 2.dp) {
                 Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PixelIconButton("back", "Back", { webView?.let { if (it.canGoBack()) it.goBack() } }, size = 34.dp)
-                    PixelIconButton("refresh", "Reload", { webView?.reload() }, size = 34.dp)
-                    PixelIconButton("home", "OptiFine downloads", { webView?.loadUrl(OPTIFINE_START) }, size = 34.dp)
+                    PixelIconButton("back", "Back", { webView?.let { if (it.canGoBack()) it.goBack() } }, size = 32.dp)
+                    PixelIconButton("refresh", "Reload", { webView?.reload() }, size = 32.dp)
+                    PixelIconButton("home", "OptiFine downloads", { webView?.loadUrl(OPTIFINE_START) }, size = 32.dp)
                     Box(Modifier.weight(1f)) { if (pageProgress in 1..99) PixelProgress(pageProgress / 100f) }
                 }
-                AndroidView(factory = { c ->
+                if (LocalInspectionMode.current) Box(Modifier.fillMaxSize().background(Color.White), contentAlignment = Alignment.Center) {
+                    Text("optifine.net (web page)", color = Color.Gray, fontSize = 12.sp)
+                } else AndroidView(factory = { c ->
                     WebView(c).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true

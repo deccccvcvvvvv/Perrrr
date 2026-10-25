@@ -138,7 +138,15 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
         immersive()
         NativeBridge.listener = this
         onBackPressedDispatcher.addCallback(this) { if (menuOpen.value) closeMenu() else tapKey(Glfw.KEY_ESCAPE) }
-        lifecycleScope.launch { RecorderService.state.collect { s -> overlay.recording = s.recording; overlay.recordingPaused = s.paused; s.error?.let { Toast.makeText(this@GameActivity, it, Toast.LENGTH_LONG).show() } } }
+        lifecycleScope.launch {
+            var shownNotice: String? = null
+            RecorderService.state.collect { s ->
+                overlay.recording = s.recording; overlay.recordingPaused = s.paused
+                s.error?.let { Toast.makeText(this@GameActivity, it, Toast.LENGTH_LONG).show() }
+                if (s.notice != null && s.notice != shownNotice) Toast.makeText(this@GameActivity, s.notice, Toast.LENGTH_LONG).show()
+                shownNotice = s.notice
+            }
+        }
     }
 
     private fun updateGeometry(insets: WindowInsetsCompat?) {

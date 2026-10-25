@@ -32,6 +32,12 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import android.view.WindowManager
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,11 +64,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= 30) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        applySystemBars()
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
+            LaunchedEffect(settings.fullscreenLauncher) { applySystemBars() }
             CsTheme(settings.theme, settings.reduceTransparency, settings.reduceMotion) { LauncherApp(vm, settings.animatedBackground) }
         }
     }
+
+    /** Immersive-sticky: the launcher uses the whole phone screen; bars come back briefly with an edge swipe. */
+    private fun applySystemBars() {
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        if (Services.settings.state.value.fullscreenLauncher) {
+            c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.hide(WindowInsetsCompat.Type.systemBars())
+        } else c.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) { super.onWindowFocusChanged(hasFocus); if (hasFocus) applySystemBars() }
 
     override fun onResume() { super.onResume(); Services.settings.reload(); vm.reload() }   // picks up results and settings written by the game process
 }
@@ -70,9 +93,9 @@ class MainActivity : ComponentActivity() {
 private sealed interface Screen { data class T(val tab: Tab) : Screen; data class O(val overlay: Overlay) : Screen }
 
 @Composable
-fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true) {
-    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
-    var overlay by remember { mutableStateOf<Overlay?>(null) }
+fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initialTab: Tab = Tab.HOME, initialOverlay: Overlay? = null) {
+    var tab by rememberSaveable { mutableStateOf(initialTab) }
+    var overlay by remember { mutableStateOf(initialOverlay) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val jobs by vm.jobs.collectAsStateWithLifecycle()
     val reduce = LocalReduceMotion.current
@@ -83,10 +106,11 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true) {
     val activeJobs = jobs.values.count { it.active }
 
     CsBackground(animated = animatedBackground) {
-        Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Vertical))) {
+        Row(Modifier.fillMaxSize()) {
             NavRail(tab, overlay == null, activeJobs) { t -> overlay = null; tab = t }
             val screen: Screen = overlay?.let { Screen.O(it) } ?: Screen.T(tab)
-            AnimatedContent(screen, Modifier.weight(1f).fillMaxHeight(), label = "screen", transitionSpec = {
+            AnimatedContent(screen, Modifier.weight(1f).fillMaxHeight()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Vertical)), label = "screen", transitionSpec = {
                 if (reduce) EnterTransition.None togetherWith ExitTransition.None
                 else when {
                     targetState is Screen.O && initialState is Screen.T ->
@@ -124,42 +148,60 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true) {
     }
 }
 
-/** Left navigation rail: pixel icons, an animated selection slab and a badge for running downloads. */
+/**
+ * Left navigation rail sized for landscape phones: the background reaches the screen edge (under a notch), the items sit
+ * inside the safe area and share the available height so all five tabs always fit (it only scrolls on very short windows).
+ */
 @Composable
 internal fun NavRail(selected: Tab, highlight: Boolean, activeJobs: Int, onSelect: (Tab) -> Unit) {
     val haptic = LocalHapticFeedback.current
-    Column(
-        Modifier.fillMaxHeight().width(84.dp).background(Color(0xE61B1B1C)).drawBehind { drawRect(Color(0xFF111112), Offset(size.width - 2.dp.toPx(), 0f), Size(2.dp.toPx(), size.height)) }
-            .verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
+    val reduce = LocalReduceMotion.current
+    BoxWithConstraints(
+        Modifier.fillMaxHeight().background(Color(0xE61B1B1C))
+            .drawBehind { drawRect(Color(0xFF111112), Offset(size.width - 2.dp.toPx(), 0f), Size(2.dp.toPx(), size.height)) }
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical))
+            .width(64.dp),
     ) {
-        PixelIcon("grass", size = 34.dp)
-        Text("CS", color = Color.White, fontFamily = Monocraft, fontSize = 12.sp, style = TextStyle(shadow = PixelTextShadow))
-        Spacer(Modifier.height(6.dp))
-        Tab.entries.forEach { t ->
-            val sel = t == selected && highlight
-            val lift by animateFloatAsState(if (sel) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 500f), label = "rail")
-            Box(
-                Modifier.size(72.dp, 62.dp)
-                    .clickable(remember { MutableInteractionSource() }, null, role = Role.Tab) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(t) }
-                    .drawBehind {
-                        if (lift > 0.01f) {
-                            val b = 2.dp.toPx()
-                            val inset = (1f - lift) * size.width / 2
-                            drawRect(Color(0xFF1E1E1F).copy(alpha = lift), Offset(inset, 0f), Size(size.width - 2 * inset, size.height))
-                            drawRect(Color(0xFF3C8527).copy(alpha = lift), Offset(inset + b, b), Size(size.width - 2 * inset - 2 * b, size.height - 2 * b))
-                            drawRect(Color(0xFF52A535).copy(alpha = lift), Offset(inset + b, b), Size(size.width - 2 * inset - 2 * b, b))
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { translationY = -lift * 2.dp.toPx(); scaleX = 1f + lift * 0.08f; scaleY = 1f + lift * 0.08f }) {
-                    PixelIcon(t.icon, size = 26.dp, tint = if (sel) Color.White else Color(0xFFBDBEC0))
-                    Spacer(Modifier.height(3.dp))
-                    Text(t.label, color = if (sel) Color.White else Color(0xFFA8A9AB), fontFamily = Monocraft, fontSize = 9.sp, maxLines = 1)
-                }
-                if (t == Tab.DOWNLOADS && activeJobs > 0) Box(Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color(0xFF1E1E1F)).padding(1.dp).background(Color(0xFFE0B020)).padding(horizontal = 4.dp)) {
-                    Text("$activeJobs", color = Color.Black, fontFamily = Monocraft, fontSize = 9.sp)
+        val logo = 34.dp
+        val itemH = ((maxHeight - logo - 12.dp) / Tab.entries.size).coerceIn(42.dp, 56.dp)
+        val fits = logo + 12.dp + itemH * Tab.entries.size <= maxHeight
+        Column(
+            Modifier.fillMaxSize().then(if (fits) Modifier else Modifier.verticalScroll(rememberScrollState())).padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = if (fits) Arrangement.SpaceBetween else Arrangement.Top,
+        ) {
+            Box(Modifier.height(logo), contentAlignment = Alignment.Center) { PixelIcon("grass", size = 26.dp) }
+            Tab.entries.forEach { t ->
+                val sel = t == selected && highlight
+                val lift by animateFloatAsState(if (sel) 1f else 0f, if (reduce) snap() else spring(dampingRatio = 0.55f, stiffness = 500f), label = "rail")
+                val busy = t == Tab.DOWNLOADS && activeJobs > 0
+                val bob = if (busy && !reduce) rememberInfiniteTransition(label = "dl").animateFloat(0f, 1f, infiniteRepeatable(tween(700, easing = LinearEasing)), label = "bob").value else 0f
+                Box(
+                    Modifier.size(58.dp, itemH)
+                        .semantics { contentDescription = t.label + if (busy) ", $activeJobs running" else "" }
+                        .clickable(remember { MutableInteractionSource() }, null, role = Role.Tab) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(t) }
+                        .drawBehind {
+                            if (lift > 0.01f) {
+                                val b = 2.dp.toPx()
+                                val inset = (1f - lift) * size.width / 2
+                                drawRect(Color(0xFF1E1E1F).copy(alpha = lift), Offset(inset, 2.dp.toPx()), Size(size.width - 2 * inset, size.height - 4.dp.toPx()))
+                                drawRect(Color(0xFF3C8527).copy(alpha = lift), Offset(inset + b, 2.dp.toPx() + b), Size(size.width - 2 * inset - 2 * b, size.height - 4.dp.toPx() - 2 * b))
+                                drawRect(Color(0xFF52A535).copy(alpha = lift), Offset(inset + b, 2.dp.toPx() + b), Size(size.width - 2 * inset - 2 * b, b))
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { translationY = -lift * 1.dp.toPx() }) {
+                        // The download arrow drops into its tray in steps while something is downloading.
+                        val step = (bob * 4).toInt().coerceAtMost(3)
+                        PixelIcon(t.icon, Modifier.graphicsLayer { translationY = if (busy) (step - 1) * 1.5f.dp.toPx() else 0f },
+                            size = if (itemH < 48.dp) 20.dp else 22.dp, tint = if (sel) Color.White else Color(0xFFBDBEC0))
+                        Spacer(Modifier.height(2.dp))
+                        Text(t.label, color = if (sel) Color.White else Color(0xFFA8A9AB), fontFamily = Monocraft, fontSize = 8.sp, lineHeight = 10.sp, maxLines = 1)
+                    }
+                    if (busy) Box(Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 2.dp).background(Color(0xFF1E1E1F)).padding(1.dp).background(Color(0xFFE0B020)).padding(horizontal = 3.dp)) {
+                        Text("$activeJobs", color = Color.Black, fontFamily = Monocraft, fontSize = 8.sp, lineHeight = 10.sp)
+                    }
                 }
             }
         }
@@ -173,14 +215,14 @@ private fun BoxScope.PixelToast(message: String?, onShown: () -> Unit) {
     LaunchedEffect(message) {
         if (message != null) { shown = message; onShown(); delay(3200L + message.length * 25L); if (shown == message) shown = null }
     }
-    AnimatedVisibility(shown != null, Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp, start = 100.dp, end = 16.dp),
+    AnimatedVisibility(shown != null, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp, start = 76.dp, end = 12.dp),
         enter = slideInVertically { it } + fadeIn(), exit = slideOutVertically { it } + fadeOut()) {
         var last by remember { mutableStateOf("") }
         shown?.let { last = it }
         PixelPanel(Modifier.widthIn(max = 560.dp).clickable { shown = null }, padding = 8.dp) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PixelIcon("info", size = 18.dp); Spacer(Modifier.width(8.dp))
-                Text(last, color = Color.White, fontSize = 13.sp)
+                Text(last, color = Color.White, fontSize = 12.sp, lineHeight = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
     }

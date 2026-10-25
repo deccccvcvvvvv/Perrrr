@@ -39,36 +39,36 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
     var pickProfile by remember { mutableStateOf(false) }
     val splash = remember { SPLASHES.random() }
 
-    Row(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // ------------------------------------------------ left: title, profile, play
         Column(Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
-            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 14.dp)) {
+            Box(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 8.dp)) {
                 Column {
-                    PixelTitle("CS LAUNCHER", fontSize = 30.sp)
-                    Text("PRO · Java Edition", color = Color(0xFFBFC0C2), fontFamily = Monocraft, fontSize = 12.sp, style = TextStyle(shadow = PixelTextShadow))
+                    PixelTitle("CS LAUNCHER", fontSize = 22.sp)
+                    Text("PRO · Java Edition", color = Color(0xFFBFC0C2), fontFamily = Monocraft, fontSize = 10.sp, lineHeight = 12.sp, style = TextStyle(shadow = PixelTextShadow))
                 }
-                SplashText(splash, Modifier.align(Alignment.BottomEnd).padding(end = 4.dp), fontSize = 13.sp)
+                SplashText(splash, Modifier.align(Alignment.BottomEnd).padding(end = 2.dp), fontSize = 11.sp)
             }
 
             PixelPanel(Modifier.fillMaxWidth().staggerIn(0)) {
                 if (profile == null) {
-                    PixelTitle("No profile yet", fontSize = 16.sp)
-                    Text("Create a profile to choose a Minecraft version.", color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                    Spacer(Modifier.height(10.dp))
+                    PixelTitle("No profile yet", fontSize = 14.sp)
+                    Text("Create a profile to choose a Minecraft version.", color = p.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                    Spacer(Modifier.height(8.dp))
                     PixelButton("Create profile", { onTab(Tab.PROFILES) }, icon = "plus", style = PxStyle.PRIMARY)
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PixelSlot { PixelIcon(profileIcon(profile), size = 36.dp) }
-                        Spacer(Modifier.width(12.dp))
+                        PixelSlot(size = 44.dp) { PixelIcon(profileIcon(profile), size = 30.dp) }
+                        Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            PixelTitle(profile.name, fontSize = 17.sp)
-                            Text(profileSubtitle(profile), color = p.textSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            PixelTitle(profile.name, fontSize = 14.sp)
+                            Text(profileSubtitle(profile), color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        PixelIconButton("list", "Switch profile", { pickProfile = true })
+                        PixelIconButton("list", "Switch profile", { pickProfile = true }, size = 34.dp)
                         Spacer(Modifier.width(6.dp))
-                        PixelIconButton("edit", "Edit profile", { onOpen(Overlay.EditProfile(profile.id)) })
+                        PixelIconButton("edit", "Edit profile", { onOpen(Overlay.EditProfile(profile.id)) }, size = 34.dp)
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     FlowRowCompat {
                         Chip("Renderer: ${profile.rendererMemo?.rendererId?.let { "$it ✓" } ?: profile.rendererId}")
                         Chip("RAM ${profile.memoryMb?.let { "$it MB" } ?: "auto ${vm.recommendedHeapMb()} MB"}")
@@ -81,12 +81,12 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
                             RunOutcome.FAILED_TO_START -> "Last launch failed${r.stage?.let { " at $it" } ?: ""}" to p.danger
                             RunOutcome.KILLED -> "Last session was stopped" to p.warning
                         }
-                        Text("$txt · ${relativeTime(r.atMs)}", color = col, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                        Text("$txt · ${relativeTime(r.atMs)}", color = col, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
                     }
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             val job = profile?.let { jobs[it.effectiveVersionId] }?.takeIf { it.active }
             val busy = state in setOf(PlayState.DOWNLOADING, PlayState.VERIFYING, PlayState.UPDATING, PlayState.PREPARING, PlayState.LAUNCHING, PlayState.PLAYING)
             val label = when (state) {
@@ -98,24 +98,28 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
             val playStyle = when (state) { PlayState.LAUNCH_FAILED, PlayState.REPAIR_REQUIRED -> PxStyle.DANGER; else -> PxStyle.PRIMARY }
             val playIcon = when (state) { PlayState.INSTALL -> "download"; PlayState.REPAIR_REQUIRED -> "refresh"; PlayState.NO_PROFILE -> "plus"; else -> "play" }
             PixelButton(label.uppercase(), { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.fillMaxWidth().staggerIn(1),
-                style = playStyle, enabled = !busy, icon = playIcon, height = 64.dp, fontSize = 20.sp)
+                style = playStyle, enabled = !busy, icon = playIcon, height = 52.dp, fontSize = 17.sp)
             AnimatedVisibility(job != null || state == PlayState.PREPARING, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                Column(Modifier.padding(top = 10.dp)) {
-                    PixelProgress(job?.fraction)
-                    Text(if (job != null) "${job.stage} · ${job.finishedFiles}/${job.totalFiles} files · ${formatBytes(job.bytes)}"
-                         else ui.launch?.state?.name?.lowercase()?.replace('_', ' ')?.replaceFirstChar(Char::uppercase) ?: "Preparing",
-                        color = p.textSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                Column(Modifier.padding(top = 8.dp)) {
+                    if (job != null) {
+                        Text(job.stage, color = Color.White, fontFamily = Monocraft, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 3.dp))
+                        JobProgress(job, compact = true)
+                    } else {
+                        MinecartProgress(null, DlPhase.ACTIVE, height = 28.dp)
+                        Text(ui.launch?.state?.name?.lowercase()?.replace('_', ' ')?.replaceFirstChar(Char::uppercase) ?: "Preparing",
+                            color = p.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+                    }
                 }
             }
             ui.failure?.let { f ->
-                Spacer(Modifier.height(10.dp))
-                PixelPanel(Modifier.fillMaxWidth().clickable { showFailure = true }) {
+                Spacer(Modifier.height(8.dp))
+                PixelPanel(Modifier.fillMaxWidth().clickable { showFailure = true }, padding = 8.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PixelIcon("warning", size = 20.dp); Spacer(Modifier.width(8.dp))
-                        Text(f.title, color = p.danger, fontFamily = Monocraft, fontSize = 13.sp)
+                        PixelIcon("warning", size = 18.dp); Spacer(Modifier.width(8.dp))
+                        Text(f.title, color = p.danger, fontFamily = Monocraft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text(f.diagnoses.firstOrNull()?.explanation ?: f.issues.firstOrNull()?.message ?: "See details", color = p.textSecondary, fontSize = 12.sp, maxLines = 3, modifier = Modifier.padding(top = 4.dp))
-                    Text("Tap for details and fixes", color = p.accent, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+                    Text(f.diagnoses.firstOrNull()?.explanation ?: f.issues.firstOrNull()?.message ?: "See details", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 3.dp))
+                    Text("Tap for details and fixes", color = p.accent, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -126,7 +130,7 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
             val acc = ui.activeAccount
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 if (acc?.type == AccountType.OFFLINE) { Badge("OFFLINE", p.warning); Spacer(Modifier.width(8.dp)) }
-                PixelButton(acc?.username ?: "Add account", { onOpen(Overlay.Accounts) }, icon = if (acc == null) "user_add" else "head", height = 40.dp)
+                PixelButton(acc?.username ?: "Add account", { onOpen(Overlay.Accounts) }, icon = if (acc == null) "user_add" else "head", height = 34.dp, fontSize = 11.sp)
             }
             SectionTitle("Quick actions")
             val actions = listOf<Triple<String, String, () -> Unit>>(
@@ -142,20 +146,20 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
                 Triple("book", "Logs") { onOpen(Overlay.Logs) },
             )
             actions.chunked(5).forEachIndexed { row, chunk ->
-                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     chunk.forEachIndexed { i, (icon, lbl, act) -> PixelTile(icon, lbl, act, Modifier.weight(1f).staggerIn(2 + row * 5 + i)) }
                 }
             }
 
             SectionTitle("Performance")
-            PixelPanel(Modifier.fillMaxWidth()) {
+            PixelPanel(Modifier.fillMaxWidth(), padding = 8.dp) {
                 val f = vm.facts
                 InfoRow("Preset", settings.performancePreset.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase))
                 InfoRow("Device memory", "${f.totalRamMb} MB${if (f.lowRamDevice) " (low-RAM)" else ""}")
                 InfoRow("Game memory", "${profile?.memoryMb ?: vm.recommendedHeapMb()} MB (max ${vm.maxHeapMb()} MB)")
-                InfoRow("Graphics", "GLES ${vm.device.glesVersion / 10}.${vm.device.glesVersion % 10} · Vulkan ${vm.device.vulkanApi ?: "n/a"}")
+                InfoRow("Graphics", "GLES ${vm.device.glesVersion.takeIf { it > 0 }?.let { "${it / 10}.${it % 10}" } ?: "?"} · Vulkan ${vm.device.vulkanApi ?: "n/a"}")
                 PerformanceAdvisor.recommendations(f, profile?.memoryMb ?: vm.recommendedHeapMb(), if (profile?.lastRun?.outcome == RunOutcome.CRASHED) 1 else 0, 0).take(2).forEach {
-                    Text("• ${it.title}: ${it.detail}", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("• ${it.title}: ${it.detail}", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, modifier = Modifier.padding(top = 3.dp))
                 }
             }
 
@@ -163,11 +167,11 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
             when {
                 !settings.recentActivityEnabled -> Text("Recent activity is turned off (Settings › Privacy).", color = p.textMuted, fontSize = 12.sp)
                 ui.activity.isEmpty() -> Text("Nothing yet.", color = p.textMuted, fontSize = 12.sp)
-                else -> PixelPanel(Modifier.fillMaxWidth()) {
+                else -> PixelPanel(Modifier.fillMaxWidth(), padding = 8.dp) {
                     ui.activity.take(6).forEach { a ->
-                        Row(Modifier.padding(vertical = 4.dp)) {
-                            Column(Modifier.weight(1f)) { Text(a.title, color = p.text, fontSize = 13.sp, maxLines = 1); Text(a.detail, color = p.textSecondary, fontSize = 11.sp, maxLines = 1) }
-                            Text(relativeTime(a.atMs), color = p.textMuted, fontSize = 11.sp)
+                        Row(Modifier.padding(vertical = 3.dp)) {
+                            Column(Modifier.weight(1f)) { Text(a.title, color = p.text, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(a.detail, color = p.textSecondary, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            Text(relativeTime(a.atMs), color = p.textMuted, fontSize = 10.sp)
                         }
                     }
                 }
@@ -176,13 +180,13 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
         }
     }
 
-    if (pickProfile) PixelDialog({ pickProfile = false }, "Choose profile", widthFraction = 0.6f, buttons = {
+    if (pickProfile) PixelDialog({ pickProfile = false }, "Choose profile", widthFraction = 0.62f, buttons = {
         PixelButton("Manage", { pickProfile = false; onTab(Tab.PROFILES) }, icon = "list")
         PixelButton("Close", { pickProfile = false })
     }) {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ui.profiles.profiles.forEach { pr ->
-                PixelButton("${pr.name}  ·  ${profileSubtitle(pr)}", { vm.select(pr.id); pickProfile = false }, Modifier.fillMaxWidth(),
+                PixelButton("${pr.name}  ·  ${profileSubtitle(pr)}", { vm.select(pr.id); pickProfile = false }, Modifier.fillMaxWidth(), height = 36.dp, fontSize = 11.sp,
                     style = if (pr.id == profile?.id) PxStyle.SELECTED else PxStyle.NORMAL, icon = profileIcon(pr))
             }
         }
@@ -203,7 +207,7 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
                 }
             }, style = PxStyle.PRIMARY)
         }) {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column {
                 f.issues.forEach { i -> Text("• [${i.stage.name.lowercase()}] ${i.message}", color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp)) }
                 f.diagnoses.forEach { d ->
                     Text("${d.kind.title} (${(d.confidence * 100).toInt()}%)", color = p.text, fontFamily = Monocraft, fontSize = 13.sp)

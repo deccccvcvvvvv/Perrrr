@@ -34,6 +34,13 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
@@ -86,7 +93,7 @@ fun DrawScope.pixelInset(b: Float, fill: Color = Px.inset) {
 }
 
 @Composable
-fun PixelPanel(modifier: Modifier = Modifier, selected: Boolean = false, padding: Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
+fun PixelPanel(modifier: Modifier = Modifier, selected: Boolean = false, padding: Dp = 10.dp, content: @Composable ColumnScope.() -> Unit) {
     val sel by animateColorAsState(if (selected) Color(0xFF6CC349) else Px.border, tween(160), label = "panelBorder")
     Column(modifier.drawBehind {
         val b = 2.dp.toPx()
@@ -101,7 +108,7 @@ enum class PxStyle { NORMAL, PRIMARY, DANGER, SELECTED }
 @Composable
 fun PixelButton(
     text: String?, onClick: () -> Unit, modifier: Modifier = Modifier, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true,
-    icon: String? = null, height: Dp = 44.dp, fontSize: TextUnit = 13.sp, contentDescription: String? = null,
+    icon: String? = null, height: Dp = 40.dp, fontSize: TextUnit = 12.sp, contentDescription: String? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -132,12 +139,12 @@ fun PixelButton(
                 drawRect(hi, Offset(b, top + b), Size(w - 2 * b, b))
                 drawRect(hi.copy(alpha = 0.55f), Offset(b, top + b), Size(b, faceH))
             }
-            .padding(start = 10.dp, end = 10.dp, top = 2.dp + depthDp * press, bottom = 2.dp + depthDp * (1 - press)),
+            .padding(start = if (text.isNullOrEmpty()) 6.dp else 10.dp, end = if (text.isNullOrEmpty()) 6.dp else 10.dp, top = 2.dp + depthDp * press, bottom = 2.dp + depthDp * (1 - press)),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            if (icon != null) PixelIcon(icon, size = if (height >= 56.dp) 24.dp else 18.dp, tint = textColor)
-            if (icon != null && !text.isNullOrEmpty()) Spacer(Modifier.width(8.dp))
+            if (icon != null) PixelIcon(icon, size = when { height >= 56.dp -> 24.dp; height < 34.dp -> 14.dp; else -> 18.dp }, tint = textColor)
+            if (icon != null && !text.isNullOrEmpty()) Spacer(Modifier.width(if (height < 34.dp) 5.dp else 7.dp))
             if (!text.isNullOrEmpty()) Text(text, color = textColor, fontFamily = Monocraft, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 style = TextStyle(shadow = if (enabled) PixelTextShadow else null), textAlign = TextAlign.Center)
         }
@@ -146,7 +153,7 @@ fun PixelButton(
 
 /** Square icon button sharing the bevel look. */
 @Composable
-fun PixelIconButton(icon: String, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true, size: Dp = 40.dp) =
+fun PixelIconButton(icon: String, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true, size: Dp = 38.dp) =
     PixelButton(null, onClick, modifier.widthIn(min = size), style, enabled, icon = icon, height = size, contentDescription = contentDescription)
 
 /** On/off switch: a sunken slot with a sliding stone knob; the slot turns green when on. */
@@ -155,7 +162,7 @@ fun PixelToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: 
     val reduce = LocalReduceMotion.current
     val t by animateFloatAsState(if (checked) 1f else 0f, if (reduce) snap() else spring(dampingRatio = 0.6f, stiffness = 700f), label = "toggle")
     val haptic = LocalHapticFeedback.current
-    Canvas(modifier.size(56.dp, 30.dp).clickable(enabled = enabled, role = Role.Switch) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onCheckedChange(!checked) }) {
+    Canvas(modifier.size(48.dp, 26.dp).clickable(enabled = enabled, role = Role.Switch) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onCheckedChange(!checked) }) {
         val b = 2.dp.toPx()
         pixelInset(b, lerp(Px.inset, if (enabled) Px.green else Px.disabled, t))
         val k = size.height - 2 * b
@@ -205,11 +212,11 @@ fun PixelSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: Closed
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier,
-                  enabled: (T) -> Boolean = { true }, icon: (T) -> String? = { null }, fill: Boolean = false, height: Dp = 38.dp) {
+                  enabled: (T) -> Boolean = { true }, icon: (T) -> String? = { null }, fill: Boolean = false, height: Dp = 34.dp) {
     if (fill) Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { o -> PixelButton(label(o), { onSelect(o) }, Modifier.weight(1f), if (o == selected) PxStyle.SELECTED else PxStyle.NORMAL, enabled(o), icon(o), height, 12.sp) }
+        options.forEach { o -> PixelButton(label(o), { onSelect(o) }, Modifier.weight(1f), if (o == selected) PxStyle.SELECTED else PxStyle.NORMAL, enabled(o), icon(o), height, 11.sp) }
     } else FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { o -> PixelButton(label(o), { onSelect(o) }, Modifier, if (o == selected) PxStyle.SELECTED else PxStyle.NORMAL, enabled(o), icon(o), height, 12.sp) }
+        options.forEach { o -> PixelButton(label(o), { onSelect(o) }, Modifier, if (o == selected) PxStyle.SELECTED else PxStyle.NORMAL, enabled(o), icon(o), height, 11.sp) }
     }
 }
 
@@ -219,12 +226,12 @@ fun PixelTextField(value: String, onValueChange: (String) -> Unit, modifier: Mod
     Column(modifier) {
         if (label != null) Text(label, color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
         BasicTextField(value, onValueChange, Modifier.fillMaxWidth(), singleLine = singleLine, minLines = minLines,
-            textStyle = TextStyle(color = Color.White, fontSize = 15.sp), cursorBrush = SolidColor(Color.White),
+            textStyle = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = Monocraft), cursorBrush = SolidColor(Color.White),
             keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Search else ImeAction.Default),
             keyboardActions = KeyboardActions(onSearch = { onDone?.invoke() }, onDone = { onDone?.invoke() }),
             decorationBox = { inner ->
-                Box(Modifier.fillMaxWidth().drawBehind { pixelInset(2.dp.toPx()) }.padding(horizontal = 12.dp, vertical = 11.dp)) {
-                    if (value.isEmpty()) Text(placeholder, color = Color(0xFF7A7B7E), fontSize = 15.sp, maxLines = 1)
+                Box(Modifier.fillMaxWidth().drawBehind { pixelInset(2.dp.toPx()) }.padding(horizontal = 10.dp, vertical = 9.dp)) {
+                    if (value.isEmpty()) Text(placeholder, color = Color(0xFF7A7B7E), fontSize = 13.sp, fontFamily = Monocraft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     inner()
                 }
             })
@@ -233,11 +240,11 @@ fun PixelTextField(value: String, onValueChange: (String) -> Unit, modifier: Mod
 
 /** Segmented progress bar; indeterminate shows a block sliding along (static with reduced motion). */
 @Composable
-fun PixelProgress(fraction: Float?, modifier: Modifier = Modifier, color: Color = Px.green, highlight: Color = Px.greenHi) {
+fun PixelProgress(fraction: Float?, modifier: Modifier = Modifier, color: Color = Px.green, highlight: Color = Px.greenHi, height: Dp = 14.dp) {
     val reduce = LocalReduceMotion.current
     val anim = if (fraction == null && !reduce) rememberInfiniteTransition(label = "indet").animateFloat(0f, 1f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "x").value else 0.3f
     val shown by animateFloatAsState(fraction ?: 0f, tween(if (reduce) 0 else 250), label = "progress")
-    Canvas(modifier.fillMaxWidth().height(14.dp)) {
+    Canvas(modifier.fillMaxWidth().height(height)) {
         val b = 2.dp.toPx()
         pixelInset(b)
         val innerW = size.width - 2 * b; val innerH = size.height - 2 * b
@@ -270,23 +277,34 @@ fun PixelTitle(text: String, modifier: Modifier = Modifier, fontSize: TextUnit =
     Text(text, modifier, color = color, fontFamily = Monocraft, fontSize = fontSize, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
         style = TextStyle(shadow = PixelTextShadow))
 
-/** Modal panel that pops in (scale + fade). Wide by default, which suits landscape. */
+/**
+ * Modal panel that pops in (scale + fade). Sized for landscape phones: never taller than the screen, the body scrolls
+ * while the title and the button row stay visible. Set [scroll] = false when the body brings its own lazy list.
+ * In previews/screenshot tests it is drawn inline because dialog windows cannot be rendered there.
+ */
 @Composable
-fun PixelDialog(onDismiss: () -> Unit, title: String, modifier: Modifier = Modifier, widthFraction: Float = 0.72f,
+fun PixelDialog(onDismiss: () -> Unit, title: String, modifier: Modifier = Modifier, widthFraction: Float = 0.72f, scroll: Boolean = true,
                 buttons: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    val cfg = LocalConfiguration.current
+    val maxH = (cfg.screenHeightDp - 16).coerceAtLeast(200).dp
+    val maxW = (cfg.screenWidthDp - 24).coerceAtLeast(260).dp
+    val body = @Composable {
         val state = remember { MutableTransitionState(false).apply { targetState = true } }
         val reduce = LocalReduceMotion.current
-        AnimatedVisibility(state, enter = if (reduce) EnterTransition.None else scaleIn(tween(170), 0.88f) + fadeIn(tween(140))) {
-            PixelPanel(modifier.fillMaxWidth(widthFraction).heightIn(max = 520.dp), padding = 14.dp) {
-                PixelTitle(title, fontSize = 17.sp)
+        AnimatedVisibility(state, enter = if (reduce) EnterTransition.None else scaleIn(tween(170), 0.9f) + fadeIn(tween(140))) {
+            PixelPanel(modifier.fillMaxWidth(widthFraction).widthIn(min = minOf(320.dp, maxW), max = maxW).heightIn(max = maxH), padding = 10.dp) {
+                PixelTitle(title, fontSize = 15.sp)
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.weight(1f, fill = false).then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)) { content() }
                 Spacer(Modifier.height(10.dp))
-                Column(Modifier.weight(1f, fill = false)) { content() }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically, content = buttons)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically, content = buttons)
             }
         }
     }
+    if (LocalInspectionMode.current) {
+        Box(Modifier.fillMaxSize().background(Color(0x99000000)), contentAlignment = Alignment.Center) { body() }
+    } else Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) { body() }
 }
 
 /** Staggered entrance for list/grid items: fades in and rises a few pixels. Disabled with reduced motion. */
@@ -451,11 +469,11 @@ fun PixelTile(icon: String, label: String, onClick: () -> Unit, modifier: Modifi
                 drawRect(if (enabled) Px.face else Px.disabled, Offset(b, top + b), Size(size.width - 2 * b, faceH))
                 drawRect(Px.faceHi, Offset(b, top + b), Size(size.width - 2 * b, b))
             }
-            .padding(start = 3.dp, end = 3.dp, top = 10.dp + 4.dp * press, bottom = 10.dp + 4.dp * (1 - press)),
+            .padding(start = 3.dp, end = 3.dp, top = 7.dp + 4.dp * press, bottom = 7.dp + 4.dp * (1 - press)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PixelIcon(icon, size = 28.dp, tint = if (enabled) tint else Px.disabledText)
-        Spacer(Modifier.height(6.dp))
+        PixelIcon(icon, size = 24.dp, tint = if (enabled) tint else Px.disabledText)
+        Spacer(Modifier.height(4.dp))
         Text(label, color = if (enabled) Color.White else Px.disabledText, fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = TextStyle(shadow = PixelTextShadow))
     }

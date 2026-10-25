@@ -18,13 +18,13 @@ class AndroidDevice(private val ctx: Context) {
 
     /** OpenGL ES version advertised by the device, e.g. 32 for ES 3.2. */
     val glesVersion: Int by lazy {
-        val v = am.deviceConfigurationInfo.reqGlEsVersion
-        (v shr 16) * 10 + (v and 0xffff).coerceAtMost(9)
+        // 0 = unknown (the service did not answer); callers treat it as "no GLES guarantee" rather than guessing.
+        runCatching { am.deviceConfigurationInfo.reqGlEsVersion }.map { v -> (v shr 16) * 10 + (v and 0xffff).coerceAtMost(9) }.getOrDefault(0)
     }
 
     /** Vulkan API version from the platform feature flag, or null if the device declares no Vulkan support. */
     val vulkanApi: String? by lazy {
-        val f = ctx.packageManager.systemAvailableFeatures.firstOrNull { it.name == PackageManager.FEATURE_VULKAN_HARDWARE_VERSION } ?: return@lazy null
+        val f = runCatching { ctx.packageManager.systemAvailableFeatures }.getOrNull()?.firstOrNull { it.name == PackageManager.FEATURE_VULKAN_HARDWARE_VERSION } ?: return@lazy null
         val v = f.version
         if (v == 0) null else "${v shr 22}.${(v shr 12) and 0x3ff}.${v and 0xfff}"
     }

@@ -459,7 +459,10 @@ SDL_EXPORT bool SDL_GL_DestroyContext(SDL_GLContext ctx) {
 SDL_EXPORT bool SDL_GL_SetSwapInterval(int i) { g_swapInterval = i < 0 ? 1 : i; if (t_curCtx) p_eglSwapInterval(g_dpy, g_swapInterval); return true; }
 SDL_EXPORT bool SDL_GL_GetSwapInterval(int *i) { if (i) *i = g_swapInterval; return true; }
 SDL_EXPORT bool SDL_GL_SwapWindow(SDL_Window *win) {
-    if (g_surface != EGL_NO_SURFACE && !p_eglSwapBuffers(g_dpy, g_surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError());
+    if (g_surface != EGL_NO_SURFACE) {
+        if (win && win == g_gameWindow) cs_record_frame();
+        if (!p_eglSwapBuffers(g_dpy, g_surface)) LOGW("eglSwapBuffers failed: 0x%x", p_eglGetError());
+    }
     if (win && win == g_gameWindow) __atomic_add_fetch(&g_frameCount, 1, __ATOMIC_RELAXED);
     handle_surface_change();
     return true;

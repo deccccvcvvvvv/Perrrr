@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import pro.cslauncher.app.CsApp
 import pro.cslauncher.app.Services
+import pro.cslauncher.app.game.NativeBridge
 import pro.cslauncher.core.activity.ActivityItem
 import pro.cslauncher.core.activity.ActivityKind
 import pro.cslauncher.core.media.RecordingPlan
@@ -34,7 +35,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.concurrent.thread
 
-data class RecorderState(val recording: Boolean = false, val paused: Boolean = false, val startedAtMs: Long = 0, val lastFile: String? = null, val error: String? = null)
+data class RecorderState(val recording: Boolean = false, val paused: Boolean = false, val startedAtMs: Long = 0, val lastFile: String? = null, val error: String? = null,
+                         /** True while frames come straight from the game renderer (no touch controls in the video). */ val clean: Boolean = false, val notice: String? = null)
 
 /**
  * In-game recorder: MediaProjection → VirtualDisplay → hardware MediaCodec (AVC/HEVC) → MediaMuxer (MP4), with optional
@@ -64,6 +66,9 @@ class RecorderService : Service() {
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val clock = PauseClock()
     private var profileName = ""
+    /** Clean mode: the game's render thread blits each frame into the encoder surface (record_gl.c); no VirtualDisplay. */
+    @Volatile private var clean = false
+    private var displayDpi = 320
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -71,8 +76,14 @@ class RecorderService : Service() {
         when (intent?.action) {
             ACTION_START -> start(intent)
             ACTION_STOP -> stop("stopped")
-            ACTION_PAUSE -> if (running && !clock.paused) { clock.pause(); display?.surface = null; _state.value = _state.value.copy(paused = true); notifyState() }
-            ACTION_RESUME -> if (running && clock.paused) { clock.resume(); display?.surface = inputSurface; _state.value = _state.value.copy(paused = false); notifyState() }
+            ACTION_PAUSE -> if (running && !clock.paused) {
+                clock.pause(); if (clean) setCleanTarget(null) else display?.surface = null
+                _state.value = _state.value.copy(paused = true); notifyState()
+            }
+            ACTION_RESUME -> if (running && clock.paused) {
+                clock.resume(); if (clean) setCleanTarget(inputSurface) else display?.surface = inputSurface
+                _state.value = _state.value.copy(paused = false); notifyState()
+            }
         }
         return START_NOT_STICKY
     }
@@ -125,16 +136,44 @@ class RecorderService : Service() {
             val audioPipe = if (p.audio.source != AudioSourceChoice.NONE) AudioPipeline.create(p, mp, clock, mic) else null
             val partPath = File(dir, ".CS_$stamp.mp4.part").absolutePath
             muxer = Muxer(MediaMuxer(partPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4), partPath, expectedTracks = if (audioPipe != null) 2 else 1)
-            display = mp.createVirtualDisplay("CSRecorder", p.width, p.height, intent.getIntExtra(EXTRA_DPI, 320), DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler)
+            displayDpi = intent.getIntExtra(EXTRA_DPI, 320)
+            clean = settings.hideControls && setCleanTarget(inputSurface)
+            if (!clean) display = createDisplay(mp, p)
             running = true
             clock.reset()
             videoThread = thread(name = "cs-rec-video") { drainVideo(codec) }
             audio = audioPipe?.also { it.start(muxer!!) }
-            _state.value = RecorderState(recording = true, startedAtMs = System.currentTimeMillis())
+            _state.value = RecorderState(recording = true, startedAtMs = System.currentTimeMillis(), clean = clean)
+            if (clean) handler.postDelayed({ verifyClean() }, 2500)
             p.warnings.forEach { android.util.Log.w("CSRecorder", it) }
         } catch (e: Exception) {
             fail("Recorder could not start: ${e.message}")
         }
+    }
+
+    private fun createDisplay(mp: MediaProjection, p: RecordingPlan): VirtualDisplay =
+        mp.createVirtualDisplay("CSRecorder", p.width, p.height, displayDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, handler)
+
+    private fun setCleanTarget(surface: android.view.Surface?): Boolean = try {
+        NativeBridge.setRecordTarget(surface, plan?.fps ?: 30); true
+    } catch (e: Throwable) {   // UnsatisfiedLinkError when the native bridge is not loaded in this process
+        android.util.Log.w("CSRecorder", "Clean recording unavailable: $e"); false
+    }
+
+    /**
+     * Clean mode must prove itself: if the renderer cannot blit into the encoder (status -1) or no frame arrived, switch to
+     * screen capture so the user still gets a video, and say so (that video will include the on-screen controls).
+     */
+    private fun verifyClean() {
+        if (!running || !clean) return
+        val status = runCatching { NativeBridge.recordStatus() }.getOrDefault(-1)
+        if (status == 1 || (status == 0 && clock.paused)) return
+        android.util.Log.w("CSRecorder", "Clean recording not possible with this renderer (status $status); using screen capture")
+        setCleanTarget(null); clean = false
+        val mp = projection; val p = plan
+        if (mp != null && p != null) runCatching { display = createDisplay(mp, p).also { if (clock.paused) it.surface = null } }
+            .onFailure { return stop("screen capture fallback failed: ${it.message}") }
+        _state.value = _state.value.copy(clean = false, notice = "This renderer cannot record a clean video; recording the screen instead (controls will be visible).")
     }
 
     private fun drainVideo(codec: MediaCodec) {
@@ -165,6 +204,7 @@ class RecorderService : Service() {
         if (!running) { stopSelfCompat(); return }
         running = false
         android.util.Log.i("CSRecorder", "Stopping: $reason")
+        if (clean) { setCleanTarget(null); clean = false }   // the game thread lets go of the encoder surface before it is closed
         runCatching { display?.surface = null; video?.signalEndOfInputStream() }
         thread(name = "cs-rec-finish") {
             videoThread?.join(3000)
@@ -194,6 +234,7 @@ class RecorderService : Service() {
     }
 
     private fun release() {
+        if (clean) { setCleanTarget(null); clean = false }
         runCatching { display?.release() }; display = null
         runCatching { video?.stop() }; runCatching { video?.release() }; video = null
         runCatching { inputSurface?.release() }; inputSurface = null

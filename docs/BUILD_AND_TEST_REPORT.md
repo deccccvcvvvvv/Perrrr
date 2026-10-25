@@ -172,11 +172,26 @@ Device feedback: the pointer sometimes showed and sometimes did not; the user wa
 
 Gates (local): `:core:test` 135/135, `:app:testDebugUnitTest` 3/3, `lintDebug`, `assembleDebug`, host SDL3 test 72/72, and Paparazzi screenshots (6).
 
+## Round 7 (phone-perfect pixel UI, game menu, download visuals, clean recording)
+
+Device feedback (screenshot of the Profiles screen on a 2400x1080 phone): the status bar was visible, the navigation rail overflowed, header buttons were huge and cards looked sparse. The user wanted every component to be right on a phone, a better in-game menu, better download animations, and recordings without the on-screen controls.
+
+| Change | Verification |
+|---|---|
+| **Real-screen screenshot harness.** `RealScreensTest` renders the real `LauncherApp` (seeded profiles, accounts, jobs, manifest) at the user's phone size (2400x1080 @ 480 dpi = 800x360 dp) and on a small phone (1440x640 @ 320 dpi = 720x320 dp). The earlier mock screenshots had missed the phone problems. | 17 real-screen PNGs plus 8 kit/game-menu PNGs (`app/src/test/snapshots/images/`), all reviewed. |
+| **Launcher UI**: immersive full screen (Settings › Appearance › Full screen; on by default). A 64 dp navigation rail whose items adapt to the height, with a badge for running downloads. Compact headers (36 dp actions), a smaller pixel kit (buttons 40 dp/12 sp, tabs 34 dp). Dialogs are bounded to the screen and scroll. Adaptive card grids on Profiles, Browse, Content and Downloads. A two-pane Settings screen with category icons (no Material widgets left). Logs use pixel tabs and an inset log box. Status badges wrap instead of being cut off. | Screenshots `home`, `profiles`, `newProfileDialog`, `editProfile`, `browse`, `downloads`, `contentMods`, `settings`, `logs`, `accounts`, `optifine`, plus `small*`. |
+| **Downloads**: a new animation. Grass blocks drop with a spring bounce into a sunken track and a minecart carries the cargo (diamonds while running, emeralds when done, empty when failed). Unknown progress ping-pongs, finished jobs sparkle, failures tint red. Cards show files, size, failures, rate and ETA. There is a summary header with Clear and a minecart empty state. Animation runs only while a job is active and is disabled with reduced motion. | Screenshots `downloads`, `smallDownloads`. |
+| **In-game menu**: the panel width adapts to the screen (62 %, at least 300 dp) and respects cut-outs. The header shows live FPS (colour-coded), game RAM and REC chips, plus a Resume button. A labelled icon tab rail. The Quick tab is grouped (Game, Controls with a layout switcher, Capture & info) with equal-width tiles. The Info tab uses stat cards. A note shows whether the current recording is clean. | Screenshots `gameMenuQuick`, `gameMenuControls`, `gameMenuLog`, `gameMenuInfo`. |
+| **Control editor**: all Material widgets were replaced by the pixel kit. The toolbar has menu, undo, layout/mode and save. The editor menu has two columns (mode, add, edit / mouse & touch, layout files). The properties dialog has two columns (behaviour / look) with square colour swatches. The key picker has 4–6 keys per row by width. The layout manager uses pixel cards. Control labels use Monocraft. | Compiles; lint. Not rendered (activity-private composables). |
+| **Clean recording** (Settings › Recording › Clean video, on by default). New `record_gl.c`: before each game `eglSwapBuffers` (GLFW and SDL3 paths), the presented back buffer is copied with `glBlitFramebuffer` into an EGL window surface made from the encoder's input `Surface`. The copy uses draw = encoder and read = game, is capped at the recording frame rate, uses swap interval 0, and restores the GL state. The touch controls, game menu and REC indicator are Android views composited above the game, so they are not in the video. The EGL config now prefers `EGL_RECORDABLE_ANDROID`. `RecorderService` uses the target instead of a VirtualDisplay (MediaProjection is still used for game audio). Pause or resume swaps the target, and stop detaches it before end-of-stream. If the renderer cannot do it (GLES 2 context, OSMesa, blit/swap error) or no frame arrives within 2.5 s, it switches to screen capture and tells the user that controls will be visible. | NDK `clang -Wall -Wextra` clean; native build in `assembleDebug`. The host SDL3 test confirms the hook runs once per game-window frame. **Not device-verified.** |
+
+Gates (local): `:core:test` 135/135, `:app:testDebugUnitTest` 3/3, `lintDebug` 0 errors (17 warnings, informational), `assembleDebug`, bundle check (every DT_NEEDED resolves), host SDL3 test 73/73, Paparazzi 25 screenshots (17 real screens + 8 kit/game menu). The optional OptiFine reference-patcher test now skips itself when its fixture jars are absent.
+
 ## Not verified (requires hardware)
 
 * Compose UI on a real device (layouts were checked with JVM-rendered screenshots only), WebView behaviour on optifine.net, and live Modrinth installs.
 * The touch overlay, control editor gestures, physical keyboard/mouse/gamepad.
 * The EGL surface path in `libcsglfw` (GLFW and SDL3), the in-process JVM via `libcsbridge`, and any renderer backend.
 * Minecraft 26.x on a device (the SDL3 bridge is host-tested against mock EGL only).
-* MediaProjection recording, audio playback capture, and gallery export.
+* Recording (clean GL-blit mode and the MediaProjection fallback), audio playback capture, and gallery export.
 * Android Keystore encryption, live Microsoft sign-in, and in-app Modrinth/CurseForge requests.

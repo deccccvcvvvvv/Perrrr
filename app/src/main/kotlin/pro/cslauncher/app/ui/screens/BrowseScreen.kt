@@ -2,6 +2,7 @@ package pro.cslauncher.app.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -34,6 +35,7 @@ import pro.cslauncher.core.util.FsUtil
 
 private val KINDS = listOf(ProjectKind.MOD, ProjectKind.MODPACK, ProjectKind.RESOURCE_PACK, ProjectKind.SHADER)
 private fun kindLabel(k: ProjectKind) = when (k) { ProjectKind.MOD -> "Mods"; ProjectKind.MODPACK -> "Modpacks"; ProjectKind.RESOURCE_PACK -> "Resource packs"; ProjectKind.SHADER -> "Shaders"; else -> k.name }
+private fun kindShort(k: ProjectKind) = when (k) { ProjectKind.RESOURCE_PACK -> "Textures"; else -> kindLabel(k) }
 private fun kindIcon(k: ProjectKind) = when (k) { ProjectKind.MOD -> "pickaxe"; ProjectKind.MODPACK -> "chest"; ProjectKind.RESOURCE_PACK -> "painting"; ProjectKind.SHADER -> "sun"; else -> "folder" }
 private enum class PackLoader(val id: String?, val label: String) { FABRIC("fabric", "Fabric"), QUILT("quilt", "Quilt"), ANY(null, "Any") }
 
@@ -103,75 +105,79 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
         }
     }
 
-    Row(Modifier.fillMaxSize()) {
-        // ---------------------------------------------- filter column
-        Column(Modifier.width(250.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(start = 12.dp, top = 10.dp, end = 4.dp, bottom = 10.dp)) {
-            PixelTitle("Browse", fontSize = 20.sp)
-            Spacer(Modifier.height(10.dp))
-            KINDS.forEach { k ->
-                PixelButton(kindLabel(k), { kind = k }, Modifier.fillMaxWidth().padding(bottom = 6.dp), style = if (k == kind) PxStyle.SELECTED else PxStyle.NORMAL, icon = kindIcon(k), height = 40.dp)
+    Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
+        // ---------------------------------------------- kind tabs + search (one row; icon-only tabs on narrow phones)
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+            val iconOnly = maxWidth < 640.dp
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                KINDS.forEach { k ->
+                    PixelButton(if (iconOnly) null else kindShort(k), { kind = k }, style = if (k == kind) PxStyle.SELECTED else PxStyle.NORMAL, icon = kindIcon(k),
+                        height = 36.dp, fontSize = 11.sp, contentDescription = kindLabel(k), modifier = if (iconOnly) Modifier.widthIn(min = 36.dp) else Modifier)
+                }
+                Spacer(Modifier.width(3.dp))
+                PixelTextField(query, { query = it }, Modifier.weight(1f), placeholder = "Search ${kindLabel(kind).lowercase()}", onDone = { load(true) })
+                PixelIconButton("search", "Search", { load(true) }, style = PxStyle.PRIMARY, size = 38.dp)
             }
-            SectionTitle(if (kind == ProjectKind.MODPACK) "Installs as" else "For profile")
+        }
+        // ---------------------------------------------- context: target profile / pack loader, and source
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (kind == ProjectKind.MODPACK) {
-                Text("Each modpack becomes its own new profile with its loader and mods.", color = p.textSecondary, fontSize = 11.sp)
-                Spacer(Modifier.height(6.dp))
-                PixelTabs(PackLoader.entries, packLoader, { it.label }, { packLoader = it }, height = 34.dp)
-                if (profile != null) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Only ${profile.versionId}", color = p.text, fontSize = 12.sp, modifier = Modifier.weight(1f)); PixelToggle(packMatchVersion, { packMatchVersion = it })
+                Text("New profile with", color = p.textSecondary, fontSize = 11.sp)
+                PixelTabs(PackLoader.entries, packLoader, { it.label }, { packLoader = it }, height = 30.dp)
+                if (profile != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Text("Only ${profile.versionId}", color = p.text, fontSize = 11.sp); PixelToggle(packMatchVersion, { packMatchVersion = it })
                 }
             } else {
-                PixelButton(profile?.name ?: "Select a profile", { pickProfile = true }, Modifier.fillMaxWidth(), icon = profile?.let(::profileIcon) ?: "list", height = 40.dp)
-                profile?.let { Text(profileSubtitle(it), color = p.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp)) }
-                Text("Results are filtered automatically for this version${if (loader != null && !vanillaForMods) " and $loader" else ""}.", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                Text("For", color = p.textSecondary, fontSize = 11.sp)
+                PixelButton(profile?.name ?: "Select a profile", { pickProfile = true }, icon = profile?.let(::profileIcon) ?: "list", height = 30.dp, fontSize = 11.sp)
+                Text(profile?.let { "${it.versionId}${if (loader != null && !vanillaForMods) " · $loader" else ""} · filtered automatically" } ?: "",
+                    color = p.textMuted, fontSize = 10.sp, maxLines = 1)
             }
-            SectionTitle("Source")
-            PixelTabs(catalogs, catalog, { it.name }, { catalog = it }, enabled = { it.available }, height = 34.dp)
-            if (!catalogs[1].available) Text("CurseForge needs an API key (Settings › Network).", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.width(10.dp))
+            PixelTabs(catalogs, catalog, { if (it.available) it.name else "${it.name} (needs key)" }, { catalog = it }, enabled = { it.available }, height = 30.dp)
         }
 
         // ---------------------------------------------- results
-        Column(Modifier.weight(1f).fillMaxHeight().padding(start = 8.dp, end = 12.dp, top = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PixelTextField(query, { query = it }, Modifier.weight(1f), placeholder = "Search ${kindLabel(kind).lowercase()} on ${catalog.name}", onDone = { load(true) })
-                Spacer(Modifier.width(8.dp))
-                PixelIconButton("search", "Search", { load(true) }, style = PxStyle.PRIMARY, size = 44.dp)
-            }
-            if (vanillaForMods) PixelPanel(Modifier.fillMaxWidth().padding(top = 8.dp), padding = 8.dp) {
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            if (vanillaForMods) PixelPanel(Modifier.fillMaxWidth().padding(top = 6.dp), padding = 6.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PixelIcon("info", size = 20.dp); Spacer(Modifier.width(8.dp))
-                    Text("“${profile!!.name}” is vanilla. Mods need a Fabric/Quilt profile; showing Fabric mods for ${profile.versionId}.", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    PixelButton("Create Fabric ${profile.versionId}", { vm.createProfile("${profile.versionId} Fabric", profile.versionId, LoaderType.FABRIC) }, style = PxStyle.PRIMARY, height = 36.dp)
+                    Text("“${profile!!.name}” is vanilla. Mods need a Fabric/Quilt profile; showing Fabric mods for ${profile.versionId}.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, modifier = Modifier.weight(1f))
+                    PixelButton("Create Fabric", { vm.createProfile("${profile.versionId} Fabric", profile.versionId, LoaderType.FABRIC) }, style = PxStyle.PRIMARY, height = 32.dp, fontSize = 11.sp)
                 }
             }
-            if (kind == ProjectKind.SHADER && profile != null && !profile.isOptiFine && profile.loader == null) PixelPanel(Modifier.fillMaxWidth().padding(top = 8.dp), padding = 8.dp) {
+            if (kind == ProjectKind.SHADER && profile != null && !profile.isOptiFine && profile.loader == null) PixelPanel(Modifier.fillMaxWidth().padding(top = 6.dp), padding = 6.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     PixelIcon("info", size = 20.dp); Spacer(Modifier.width(8.dp))
                     Text("Shaders need OptiFine, or Iris on a Fabric profile.", color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    PixelButton("Get OptiFine", { onOpen(Overlay.OptiFine(profile.id)) }, icon = "bolt", height = 36.dp)
+                    PixelButton("Get OptiFine", { onOpen(Overlay.OptiFine(profile.id)) }, icon = "bolt", height = 32.dp, fontSize = 11.sp)
                 }
             }
             if (loading && results.isEmpty()) PixelProgress(null, Modifier.padding(top = 10.dp))
             error?.let {
                 Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Could not load results: $it", color = p.danger, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    PixelButton("Retry", { load(results.isEmpty()) }, icon = "refresh", height = 36.dp)
+                    PixelButton("Retry", { load(results.isEmpty()) }, icon = "refresh", height = 32.dp, fontSize = 11.sp)
                 }
             }
             if (!loading && error == null && results.isEmpty() && catalog.available)
                 Text("Nothing found${gameVersion?.let { " for $it" } ?: ""}.", color = p.textMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 16.dp))
-            LazyVerticalGrid(GridCells.Adaptive(300.dp), Modifier.fillMaxSize(), grid, PaddingValues(top = 10.dp, bottom = 16.dp),
+            LazyVerticalGrid(GridCells.Adaptive(270.dp), Modifier.fillMaxSize(), grid, PaddingValues(top = 8.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(results, key = { _, r -> r.source + r.id }) { i, r ->
                     val isInstalled = installed.containsKey(ContentIndex.key(r.source, r.id))
-                    PixelPanel(Modifier.fillMaxWidth().staggerIn(i % 12).clickable { opened = r }, padding = 8.dp) {
+                    PixelPanel(Modifier.fillMaxWidth().staggerIn(i % 12).clickable { opened = r }, padding = 7.dp) {
                         Row {
-                            PixelSlot(size = 56.dp) { RemoteImage(r.iconUrl, 44.dp, fallbackIcon = kindIcon(kind)) }
-                            Spacer(Modifier.width(10.dp))
+                            PixelSlot(size = 48.dp) { RemoteImage(r.iconUrl, 38.dp, fallbackIcon = kindIcon(kind)) }
+                            Spacer(Modifier.width(8.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(r.title, color = Color.White, fontFamily = Monocraft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${r.author?.let { "by $it · " } ?: ""}${compactCount(r.downloads)} downloads", color = p.textMuted, fontSize = 11.sp, maxLines = 1)
-                                Text(r.description, color = p.textSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                                if (isInstalled) Box(Modifier.padding(top = 4.dp)) { Badge("INSTALLED", icon = "check") }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(r.title, color = Color.White, fontFamily = Monocraft, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                    if (isInstalled) { Spacer(Modifier.width(4.dp)); Badge("INSTALLED", icon = "check") }
+                                }
+                                Text("${r.author?.let { "by $it · " } ?: ""}${compactCount(r.downloads)} downloads", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(r.description, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                             }
                         }
                     }
@@ -182,9 +188,9 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
     }
 
     if (pickProfile) PixelDialog({ pickProfile = false }, "Browse for…", widthFraction = 0.6f, buttons = { PixelButton("Close", { pickProfile = false }) }) {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ui.profiles.profiles.forEach { pr ->
-                PixelButton("${pr.name}  ·  ${profileSubtitle(pr)}", { vm.select(pr.id); pickProfile = false }, Modifier.fillMaxWidth(),
+                PixelButton("${pr.name}  ·  ${profileSubtitle(pr)}", { vm.select(pr.id); pickProfile = false }, Modifier.fillMaxWidth(), height = 36.dp, fontSize = 11.sp,
                     style = if (pr.id == profile?.id) PxStyle.SELECTED else PxStyle.NORMAL, icon = profileIcon(pr))
             }
         }
@@ -205,11 +211,11 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
             PixelButton("Close", { opened = null }, enabled = busy == null)
         }) {
             Row {
-                PixelSlot(size = 72.dp) { RemoteImage(proj.iconUrl, 60.dp, fallbackIcon = kindIcon(kind)) }
+                PixelSlot(size = 56.dp) { RemoteImage(proj.iconUrl, 46.dp, fallbackIcon = kindIcon(kind)) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("${proj.author?.let { "by $it · " } ?: ""}${compactCount(proj.downloads)} downloads · ${proj.source}", color = p.textMuted, fontSize = 11.sp)
-                    Text(proj.description, color = p.textSecondary, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Text(proj.description, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
                     if (proj.categories.isNotEmpty()) Box(Modifier.padding(top = 6.dp)) { FlowRowCompat { proj.categories.take(6).forEach { Chip(it) } } }
                     if (have != null) Box(Modifier.padding(top = 6.dp)) { Badge("INSTALLED · ${have.fileName}", icon = "check") }
                 }
@@ -219,15 +225,15 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
             when {
                 files == null -> PixelProgress(null)
                 files!!.isEmpty() -> Text(filesError?.let { "Could not load files: $it" } ?: "No file is compatible with ${gameVersion ?: "this"}${loader?.let { " · $it" } ?: ""}.", color = p.warning, fontSize = 12.sp)
-                else -> Column(Modifier.heightIn(max = 230.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     files!!.take(15).forEach { f ->
                         val thisInstalled = have?.fileName == FsUtil.safeFileName(f.fileName)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(f.versionName, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(f.versionName, color = Color.White, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(listOfNotNull(f.fileName, f.size?.let(::formatBytes), f.gameVersions.take(3).joinToString().ifBlank { null },
                                     if (f.requiredDependencies.isNotEmpty()) "+${f.requiredDependencies.size} required" else null).joinToString(" · "),
-                                    color = p.textMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Spacer(Modifier.width(8.dp))
                             when {
@@ -244,7 +250,7 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                                             r.onSuccess { vm.toast(it.summary(proj.title)); opened = null }.onFailure { vm.toast("Install failed: ${it.message}") }
                                         }
                                     } else vm.toast("Select a profile first")
-                                }, style = PxStyle.PRIMARY, enabled = busy == null, icon = "download", height = 36.dp)
+                                }, style = PxStyle.PRIMARY, enabled = busy == null, icon = "download", height = 32.dp, fontSize = 11.sp)
                             }
                         }
                     }

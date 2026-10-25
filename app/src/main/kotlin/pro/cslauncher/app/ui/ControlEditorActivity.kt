@@ -29,7 +29,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,10 @@ import pro.cslauncher.app.Services
 import pro.cslauncher.app.ui.screens.ChoiceRow
 import pro.cslauncher.app.ui.screens.ConfirmDialog
 import pro.cslauncher.app.ui.screens.SliderRow
+import pro.cslauncher.app.ui.screens.SwitchRow
+import pro.cslauncher.app.ui.screens.LinkButton
+import pro.cslauncher.app.ui.screens.AppTextField
+import pro.cslauncher.app.ui.theme.*
 import pro.cslauncher.app.ui.theme.CsTheme
 import pro.cslauncher.app.ui.theme.LocalPalette
 import pro.cslauncher.core.controls.*
@@ -108,6 +113,7 @@ open class ControlEditorActivity : ComponentActivity() {
         var message by remember { mutableStateOf<String?>(null) }
         var size by remember { mutableStateOf(IntSize(0, 0)) }
         val density = LocalDensity.current.density
+        val mono = remember { runCatching { androidx.core.content.res.ResourcesCompat.getFont(this@ControlEditorActivity, pro.cslauncher.app.R.font.monocraft) }.getOrNull() }
         val settings by Services.settings.state.collectAsState()
         val geo = Geometry(maxOf(size.width, 1), maxOf(size.height, 1), density, paddingPx = (settings.touch.safeAreaPaddingDp * density).toInt())
         val ready = size.width > 8 && size.height > 8
@@ -183,7 +189,7 @@ open class ControlEditorActivity : ComponentActivity() {
                         g += 0.05f
                     }
                 }
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF0F1F5.toInt(); textSize = 12 * density; textAlign = android.graphics.Paint.Align.CENTER }
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF0F1F5.toInt(); textSize = 11 * density; textAlign = android.graphics.Paint.Align.CENTER; typeface = mono }
                 layout.elements(mode).forEach { e ->
                     val r = geo.rectOf(e); val isSel = e.id == selected
                     val col = Color(e.colorArgb.toInt()).copy(alpha = e.opacity.coerceIn(0.2f, 1f))
@@ -199,63 +205,90 @@ open class ControlEditorActivity : ComponentActivity() {
                 }
             }
 
-            // ---- floating editor button (top centre) and mode indicator ----
-            Row(Modifier.align(Alignment.TopCenter).padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).background(p.elevated.copy(alpha = 0.95f), CircleShape).border(1.dp, p.border, CircleShape).clickable { menu = true },
-                    contentAlignment = Alignment.Center) { Text("⚙", color = p.text, fontSize = 20.sp) }
-                Spacer(Modifier.width(8.dp))
-                Text("${layout.name} · $mode${if (editor.dirty) " · unsaved" else ""}", color = p.textSecondary, fontSize = 12.sp,
-                    modifier = Modifier.background(p.elevated.copy(alpha = 0.85f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 6.dp))
+            // ---- floating editor button (top centre) and layout / mode indicator ----
+            Row(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)).padding(top = 6.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PixelIconButton("settings", "Editor menu", { menu = true }, size = 38.dp)
+                PixelIconButton("back", "Undo", { edit { editor.undo() } }, enabled = editor.canUndo, size = 38.dp)
+                Box(Modifier.background(Color(0xE0202022)).border(2.dp, Color(0xFF0E0E0F)).padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text("${layout.name} · $mode${if (editor.dirty) " · unsaved" else ""}", color = if (editor.dirty) Color(0xFFFFD866) else Color(0xFFCFD0D2),
+                        fontFamily = Monocraft, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 1)
+                }
+                PixelIconButton("check", "Save", { if (save()) message = "Saved" }, style = if (editor.dirty) PxStyle.PRIMARY else PxStyle.NORMAL, size = 38.dp)
             }
-            if (layout.elements(mode).isEmpty()) Text("Empty mode — open ⚙ and add a button", color = p.textSecondary, modifier = Modifier.align(Alignment.Center))
-            message?.let { Snackbar(Modifier.align(Alignment.BottomCenter).padding(16.dp), action = { TextButton(onClick = { message = null }) { Text("OK") } }) { Text(it) } }
+            if (layout.elements(mode).isEmpty()) Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                PixelIcon("gamepad", size = 40.dp)
+                Spacer(Modifier.height(6.dp))
+                Text("This mode is empty. Open the menu to add a button.", color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp)
+            }
+            message?.let { msg ->
+                LaunchedEffect(msg) { kotlinx.coroutines.delay(3000); if (message == msg) message = null }
+                PixelPanel(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).widthIn(max = 520.dp), padding = 6.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(msg, color = Color.White, fontFamily = Monocraft, fontSize = 11.sp, lineHeight = 13.sp, modifier = Modifier.weight(1f, fill = false).padding(horizontal = 4.dp))
+                        Spacer(Modifier.width(8.dp))
+                        PixelButton("OK", { message = null }, height = 28.dp, fontSize = 10.sp)
+                    }
+                }
+            }
         }
 
-        // ---------------------------------------------------------------- editor menu
-        if (menu) Dialog(onDismissRequest = { menu = false }) {
-            Column(Modifier.width(360.dp).background(p.elevated, RoundedCornerShape(16.dp)).verticalScroll(rememberScrollState()).padding(16.dp)) {
-                Text("Edit controls", color = p.text, fontSize = 18.sp)
-                Spacer(Modifier.height(8.dp))
-                Text("Mode", color = p.textSecondary, fontSize = 12.sp)
-                FlowRowCompat { layout.modes.keys.forEach { m -> FilterChip(m == mode, { mode = m; selected = null }, label = { Text(m) }, modifier = Modifier.padding(end = 4.dp)) }
-                    AssistChip(onClick = { newMode = true }, label = { Text("+ Mode") }) }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                MenuItem("+ Add button") { edit { editor.add(mode, ControlElement(id = "button", label = "", x = 0.5f, y = 0.5f, actions = listOf(InputAction.Key(Glfw.KEY_SPACE)))) }; selected = editor.current.elements(mode).last().id; menu = false }
-                MenuItem("+ Add joystick") { edit { editor.add(mode, ControlElement(id = "stick", kind = ElementKind.JOYSTICK, x = 0.18f, y = 0.65f, widthDp = 130f, heightDp = 130f, opacity = 0.5f, joystick = JoystickConfig())) }; menu = false }
-                MenuItem("+ Add touchpad") { edit { editor.add(mode, ControlElement(id = "pad", kind = ElementKind.TOUCHPAD, x = 0.5f, y = 0.5f, widthDp = 220f, heightDp = 140f, opacity = 0.2f, touchpad = TouchpadConfig())) }; menu = false }
-                Row {
-                    TextButton(onClick = { edit { editor.undo() } }, enabled = editor.canUndo) { Text("Undo") }
-                    TextButton(onClick = { edit { editor.redo() } }, enabled = editor.canRedo) { Text("Redo") }
-                    FilterChip(grid, { grid = !grid }, label = { Text("Snap to grid") })
+        // ---------------------------------------------------------------- editor menu (two columns: fits a landscape phone)
+        if (menu) PixelDialog({ menu = false }, "Edit controls", widthFraction = 0.86f, buttons = {
+            PixelButton("Exit", { menu = false; if (editor.dirty) confirmExit = true else onClose(null) }, height = 34.dp, fontSize = 11.sp)
+            PixelButton("Save", { if (save()) { menu = false; message = "Saved" } }, icon = "check", height = 34.dp, fontSize = 11.sp)
+            PixelButton("Save & exit", { if (save()) onClose(editor.current.id) }, style = PxStyle.PRIMARY, icon = "door", height = 34.dp, fontSize = 11.sp)
+        }) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    GroupLabel("Mode")
+                    Row(Modifier.horizontalScrollCompat(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PixelTabs(layout.modes.keys.toList(), mode, { it }, { mode = it; selected = null }, height = 32.dp)
+                        PixelButton("Mode", { newMode = true }, icon = "plus", height = 32.dp, fontSize = 10.sp)
+                    }
+                    GroupLabel("Add")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PixelTile("plus", "Button", {
+                            edit { editor.add(mode, ControlElement(id = "button", label = "", x = 0.5f, y = 0.5f, actions = listOf(InputAction.Key(Glfw.KEY_SPACE)))) }
+                            selected = editor.current.elements(mode).last().id; menu = false }, Modifier.weight(1f))
+                        PixelTile("gamepad", "Joystick", {
+                            edit { editor.add(mode, ControlElement(id = "stick", kind = ElementKind.JOYSTICK, x = 0.18f, y = 0.65f, widthDp = 130f, heightDp = 130f, opacity = 0.5f, joystick = JoystickConfig())) }
+                            menu = false }, Modifier.weight(1f))
+                        PixelTile("mouse", "Touchpad", {
+                            edit { editor.add(mode, ControlElement(id = "pad", kind = ElementKind.TOUCHPAD, x = 0.5f, y = 0.5f, widthDp = 220f, heightDp = 140f, opacity = 0.2f, touchpad = TouchpadConfig())) }
+                            menu = false }, Modifier.weight(1f))
+                    }
+                    GroupLabel("Edit")
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LinkButton("Undo", { edit { editor.undo() } }, enabled = editor.canUndo, icon = "back")
+                        LinkButton("Redo", { edit { editor.redo() } }, enabled = editor.canRedo, icon = "refresh")
+                        Spacer(Modifier.width(4.dp))
+                        Text("Grid", color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp)
+                        PixelToggle(grid, { grid = it })
+                    }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                Text("Mouse & touch", color = p.textSecondary, fontSize = 12.sp)
-                val cs by pro.cslauncher.app.Services.settings.state.collectAsState()
-                fun cursorUp(f: (pro.cslauncher.core.settings.CursorSettings) -> pro.cslauncher.core.settings.CursorSettings) =
-                    pro.cslauncher.app.Services.settings.update { it.copy(cursor = f(it.cursor)) }
-                FlowRowCompat {
-                    FilterChip(cs.cursor.mode == pro.cslauncher.core.settings.CursorMode.TOUCHPAD, { cursorUp { it.withVirtualMouse(it.mode != pro.cslauncher.core.settings.CursorMode.TOUCHPAD) } },
-                        label = { Text("Virtual mouse") }, modifier = Modifier.padding(end = 4.dp))
-                    FilterChip(cs.cursor.pointerOnTouch, { cursorUp { it.withPointerOnTouch(!it.pointerOnTouch) } }, enabled = cs.cursor.mode != pro.cslauncher.core.settings.CursorMode.TOUCHPAD,
-                        label = { Text("Pointer on touch") })
-                }
-                Text(if (cs.cursor.mode == pro.cslauncher.core.settings.CursorMode.TOUCHPAD) "Menus: drag to move the pointer, tap to click." else "Menus: touch buttons and slots directly.",
-                    color = p.textMuted, fontSize = 11.sp)
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                MenuItem("Layouts…") { layouts = true; menu = false }
-                MenuItem("Export to file") { exportLauncher.launch("${editor.current.id}.json"); menu = false }
-                MenuItem("Import from file") { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")); menu = false }
-                MenuItem("Copy JSON to clipboard") {
-                    getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("CS layout", ControlLayoutCodec.encode(editor.current))); message = "Layout JSON copied"; menu = false }
-                MenuItem("Paste JSON…") { importing = true; menu = false }
-                MenuItem("Reset to default layout") { edit { editor.resetAll(DefaultLayouts.defaultTouch()) }; mode = editor.current.defaultMode; menu = false }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                Row {
-                    Button(onClick = { if (save()) { menu = false; message = "Saved" } }) { Text("Save") }
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = { if (save()) onClose(editor.current.id) }) { Text("Save & exit") }
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { menu = false; if (editor.dirty) confirmExit = true else onClose(null) }) { Text("Exit", color = p.textSecondary) }
+                Column(Modifier.weight(1f)) {
+                    val cs by Services.settings.state.collectAsState()
+                    fun cursorUp(f: (pro.cslauncher.core.settings.CursorSettings) -> pro.cslauncher.core.settings.CursorSettings) =
+                        Services.settings.update { it.copy(cursor = f(it.cursor)) }
+                    val virtual = cs.cursor.mode == pro.cslauncher.core.settings.CursorMode.TOUCHPAD
+                    GroupLabel("Mouse & touch")
+                    SwitchRow("Virtual mouse", if (virtual) "Menus: drag to move the pointer, tap to click" else "Menus: touch buttons and slots directly", virtual) {
+                        cursorUp { c -> c.withVirtualMouse(!virtual) } }
+                    SwitchRow("Pointer on touch", "Show the cursor where you touch", cs.cursor.pointerOnTouch, enabled = !virtual) {
+                        cursorUp { c -> c.withPointerOnTouch(!c.pointerOnTouch) } }
+                    GroupLabel("Layout")
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LinkButton("Layouts", { layouts = true; menu = false }, icon = "list")
+                        LinkButton("Export", { exportLauncher.launch("${editor.current.id}.json"); menu = false }, icon = "upload")
+                        LinkButton("Import", { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")); menu = false }, icon = "folder")
+                        LinkButton("Copy JSON", {
+                            getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("CS layout", ControlLayoutCodec.encode(editor.current)))
+                            message = "Layout JSON copied"; menu = false }, icon = "book")
+                        LinkButton("Paste JSON", { importing = true; menu = false }, icon = "edit")
+                        LinkButton("Reset", { edit { editor.resetAll(DefaultLayouts.defaultTouch()) }; mode = editor.current.defaultMode; menu = false }, icon = "warning", style = PxStyle.DANGER)
+                    }
                 }
             }
         }
@@ -276,103 +309,106 @@ open class ControlEditorActivity : ComponentActivity() {
 
         if (newMode) {
             var name by remember { mutableStateOf("") }
-            AlertDialog(onDismissRequest = { newMode = false }, title = { Text("New mode") },
-                text = { OutlinedTextField(name, { name = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' || c == '-' }.take(24) }, label = { Text("Name (a-z, 0-9)") }, singleLine = true) },
-                confirmButton = { TextButton(onClick = { if (name.isNotBlank()) { edit { editor.addMode(name) }; mode = name }; newMode = false }) { Text("Add") } },
-                dismissButton = { TextButton(onClick = { newMode = false }) { Text("Cancel") } })
+            PixelDialog({ newMode = false }, "New mode", widthFraction = 0.5f, buttons = {
+                PixelButton("Cancel", { newMode = false }, height = 34.dp, fontSize = 11.sp)
+                PixelButton("Add", { if (name.isNotBlank()) { edit { editor.addMode(name) }; mode = name }; newMode = false }, style = PxStyle.PRIMARY,
+                    enabled = name.isNotBlank(), icon = "plus", height = 34.dp, fontSize = 11.sp)
+            }) {
+                AppTextField(name, { name = it.lowercase().filter { c -> c.isLetterOrDigit() || c == '_' || c == '-' }.take(24) }, "Name (a-z, 0-9)", placeholder = "building")
+                Text("Switch modes in game with a \"Switch mode\" button.", color = Color(0xFF9A9B9D), fontFamily = Monocraft, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp))
+            }
         }
         if (confirmExit) ConfirmDialog("Discard changes?", "Unsaved changes to this layout will be lost.", "Discard", true, onConfirm = { onClose(null) }, onDismiss = { confirmExit = false })
         if (importing) {
             var text by remember { mutableStateOf("") }
-            AlertDialog(onDismissRequest = { importing = false }, title = { Text("Import layout") },
-                text = { OutlinedTextField(text, { text = it }, label = { Text("Paste layout JSON") }, modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp)) },
-                confirmButton = { TextButton(onClick = {
+            PixelDialog({ importing = false }, "Paste layout JSON", widthFraction = 0.7f, buttons = {
+                PixelButton("Cancel", { importing = false }, height = 34.dp, fontSize = 11.sp)
+                PixelButton("Import", {
                     runCatching { store.import(text) }.onSuccess { l -> editor = LayoutEditor(l); mode = l.defaultMode; version++; message = "Imported '${l.name}'" }
-                        .onFailure { message = "Invalid layout: ${it.message}" }; importing = false }) { Text("Import") } },
-                dismissButton = { TextButton(onClick = { importing = false }) { Text("Cancel") } })
+                        .onFailure { message = "Invalid layout: ${it.message}" }; importing = false
+                }, style = PxStyle.PRIMARY, enabled = text.isNotBlank(), icon = "check", height = 34.dp, fontSize = 11.sp)
+            }) {
+                PixelTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 96.dp, max = 180.dp), placeholder = "{ \"format\": … }", singleLine = false, minLines = 4)
+            }
         }
     }
 
-    @Composable private fun MenuItem(text: String, onClick: () -> Unit) {
-        Text(text, color = LocalPalette.current.text, modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp))
+    @Composable private fun GroupLabel(text: String) {
+        Text(text.uppercase(), color = Color(0xFF9A9B9D), fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
     }
 
-    /** Simple wrapping row (keeps the dependency set minimal). */
-    @Composable private fun FlowRowCompat(content: @Composable () -> Unit) {
-        Row(Modifier.fillMaxWidth().horizontalScrollCompat(), verticalAlignment = Alignment.CenterVertically) { content() }
-    }
     @Composable private fun Modifier.horizontalScrollCompat(): Modifier = this.then(Modifier.horizontalScroll(rememberScrollState()))
 
     // ---------------------------------------------------------------- properties dialog
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun PropertiesDialog(e: ControlElement, layout: ControlLayout, mode: String, onDismiss: () -> Unit,
                                  onChange: (Boolean, (ControlElement) -> ControlElement) -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
-        val p = LocalPalette.current
         var pickSlot by remember { mutableStateOf<Int?>(null) }
         var pickJoy by remember { mutableStateOf<String?>(null) }
-        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            Column(Modifier.widthIn(max = 520.dp).fillMaxWidth(0.9f).fillMaxHeight(0.92f).background(p.elevated, RoundedCornerShape(16.dp))
-                .verticalScroll(rememberScrollState()).padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Edit ${e.kind.name.lowercase()}", color = p.text, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Done", color = p.accent) }
-                }
-                OutlinedTextField(e.label, { v -> onChange(true) { it.copy(label = v.take(12)) } }, label = { Text("Label (empty = key names)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-
-                if (e.kind == ElementKind.BUTTON) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Keys pressed together (up to 4)", color = p.textSecondary, fontSize = 12.sp)
-                    Row(Modifier.horizontalScrollCompat(), verticalAlignment = Alignment.CenterVertically) {
-                        e.actions.forEachIndexed { i, a ->
-                            InputChip(selected = false, onClick = { pickSlot = i }, label = { Text(a.describe()) },
-                                trailingIcon = { if (e.actions.size > 1) Text("✕", color = p.textSecondary, modifier = Modifier.clickable { onChange(false) { it.copy(actions = it.actions.filterIndexed { j, _ -> j != i }) } }) },
-                                modifier = Modifier.padding(end = 4.dp))
+        val title = when (e.kind) { ElementKind.BUTTON -> "Edit button"; ElementKind.JOYSTICK -> "Edit joystick"; else -> "Edit touchpad" }
+        PixelDialog(onDismiss, title, widthFraction = 0.9f, buttons = {
+            PixelButton("Delete", onDelete, style = PxStyle.DANGER, icon = "trash", height = 34.dp, fontSize = 11.sp)
+            PixelButton("Duplicate", onDuplicate, icon = "plus", height = 34.dp, fontSize = 11.sp)
+            PixelButton("Done", onDismiss, style = PxStyle.PRIMARY, icon = "check", height = 34.dp, fontSize = 11.sp)
+        }) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                // ---- what it does
+                Column(Modifier.weight(1f)) {
+                    AppTextField(e.label, { v -> onChange(true) { it.copy(label = v.take(12)) } }, "Label", placeholder = "empty = key names")
+                    if (e.kind == ElementKind.BUTTON) {
+                        GroupLabel("Keys pressed together (up to 4)")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            e.actions.forEachIndexed { i, a ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    PixelButton(a.describe(), { pickSlot = i }, height = 32.dp, fontSize = 10.sp)
+                                    if (e.actions.size > 1) PixelIconButton("close", "Remove ${a.describe()}", {
+                                        onChange(false) { it.copy(actions = it.actions.filterIndexed { j, _ -> j != i }) } }, size = 32.dp)
+                                }
+                            }
+                            if (e.actions.size < 4) PixelButton("Key", { pickSlot = e.actions.size }, icon = "plus", height = 32.dp, fontSize = 10.sp)
                         }
-                        if (e.actions.size < 4) AssistChip(onClick = { pickSlot = e.actions.size }, label = { Text("+ Key") })
+                        ChoiceRow("Behaviour", ButtonBehavior.entries, e.behavior, label = { behaviourLabel(it) }) { b -> onChange(false) { it.copy(behavior = b) } }
+                        ChoiceRow("Visible", Visibility.entries, e.visibility, label = { when (it) { Visibility.ALWAYS -> "Always"; Visibility.IN_GAME -> "In game"; Visibility.IN_MENU -> "In menus" } }) { v ->
+                            onChange(false) { it.copy(visibility = v) } }
+                        SwitchRow("Swipeable", "Slide a finger across to press", e.swipeable) { v -> onChange(false) { it.copy(swipeable = v) } }
                     }
-                    ChoiceRow("Behaviour", ButtonBehavior.entries, e.behavior, label = { behaviourLabel(it) }) { b -> onChange(false) { it.copy(behavior = b) } }
-                    ChoiceRow("Visible", Visibility.entries, e.visibility, label = { when (it) { Visibility.ALWAYS -> "Always"; Visibility.IN_GAME -> "In game"; Visibility.IN_MENU -> "In menus" } }) { v -> onChange(false) { it.copy(visibility = v) } }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(e.swipeable, { v -> onChange(false) { it.copy(swipeable = v) } }); Spacer(Modifier.width(8.dp))
-                        Text("Swipeable (slide a finger across to press)", color = p.text, fontSize = 14.sp)
-                    }
-                }
-                if (e.kind == ElementKind.JOYSTICK) {
-                    val j = e.joystick ?: JoystickConfig()
-                    fun setJ(f: (JoystickConfig) -> JoystickConfig) = onChange(true) { it.copy(joystick = f(it.joystick ?: JoystickConfig())) }
-                    ChoiceRow("Role", JoystickRole.entries, j.role, label = { if (it == JoystickRole.MOVEMENT) "Movement (WASD)" else "Camera" }) { r -> setJ { it.copy(role = r) } }
-                    SliderRow("Dead zone", j.deadZone, 0f..0.6f, format = { "${(it * 100).toInt()}%" }) { v -> setJ { it.copy(deadZone = v) } }
-                    SliderRow("Auto-sprint at", j.sprintThreshold, 0f..1f, format = { if (it < 0.05f) "off" else "${(it * 100).toInt()}%" }) { v -> setJ { it.copy(sprintThreshold = if (v < 0.05f) 0f else v) } }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Switch(j.floating, { v -> setJ { it.copy(floating = v) } }); Spacer(Modifier.width(8.dp)); Text("Floating (centre where you touch)", color = p.text, fontSize = 14.sp) }
-                    if (j.role == JoystickRole.MOVEMENT) Row(Modifier.horizontalScrollCompat()) {
-                        listOf("forward" to j.forward, "back" to j.back, "left" to j.left, "right" to j.right).forEach { (n, k) ->
-                            AssistChip(onClick = { pickJoy = n }, label = { Text("$n: ${Glfw.names[k] ?: k}") }, modifier = Modifier.padding(end = 4.dp))
+                    if (e.kind == ElementKind.JOYSTICK) {
+                        val j = e.joystick ?: JoystickConfig()
+                        fun setJ(f: (JoystickConfig) -> JoystickConfig) = onChange(true) { it.copy(joystick = f(it.joystick ?: JoystickConfig())) }
+                        ChoiceRow("Role", JoystickRole.entries, j.role, label = { if (it == JoystickRole.MOVEMENT) "Movement (WASD)" else "Camera" }) { r -> setJ { it.copy(role = r) } }
+                        SliderRow("Dead zone", j.deadZone, 0f..0.6f, format = { "${(it * 100).toInt()}%" }) { v -> setJ { it.copy(deadZone = v) } }
+                        SliderRow("Auto-sprint at", j.sprintThreshold, 0f..1f, format = { if (it < 0.05f) "off" else "${(it * 100).toInt()}%" }) { v -> setJ { it.copy(sprintThreshold = if (v < 0.05f) 0f else v) } }
+                        SwitchRow("Floating", "Centre where you touch", j.floating) { v -> setJ { it.copy(floating = v) } }
+                        if (j.role == JoystickRole.MOVEMENT) {
+                            GroupLabel("Direction keys")
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("forward" to j.forward, "back" to j.back, "left" to j.left, "right" to j.right).forEach { (n, k) ->
+                                    PixelButton("$n: ${Glfw.names[k] ?: k}", { pickJoy = n }, height = 32.dp, fontSize = 10.sp)
+                                }
+                            }
                         }
                     }
-                }
-                if (e.kind == ElementKind.TOUCHPAD) {
-                    val t = e.touchpad ?: TouchpadConfig()
-                    SliderRow("Sensitivity", t.sensitivity, 0.2f..3f, format = { "%.1fx".format(it) }) { v -> onChange(true) { it.copy(touchpad = t.copy(sensitivity = v)) } }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Switch(t.tapToClick, { v -> onChange(false) { it.copy(touchpad = t.copy(tapToClick = v)) } }); Spacer(Modifier.width(8.dp)); Text("Tap to click", color = p.text) }
-                }
-
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                SliderRow("Width", e.widthDp, 24f..320f, format = { "${it.toInt()} dp" }) { v -> onChange(true) { it.copy(widthDp = v) } }
-                SliderRow("Height", e.heightDp, 24f..320f, format = { "${it.toInt()} dp" }) { v -> onChange(true) { it.copy(heightDp = v) } }
-                SliderRow("Opacity", e.opacity, 0f..1f, format = { "${(it * 100).toInt()}%" }) { v -> onChange(true) { it.copy(opacity = v) } }
-                SliderRow("Corner radius", e.cornerRadius, 0f..0.5f, format = { "${(it * 200).toInt()}%" }) { v -> onChange(true) { it.copy(cornerRadius = v) } }
-                Text("Colour", color = p.textSecondary, fontSize = 12.sp)
-                Row(Modifier.horizontalScrollCompat().padding(vertical = 6.dp)) {
-                    SWATCHES.forEach { c ->
-                        Box(Modifier.padding(end = 6.dp).size(30.dp).background(Color(c.toInt()), CircleShape)
-                            .border(if (c == e.colorArgb) 3.dp else 1.dp, if (c == e.colorArgb) p.accent else p.border, CircleShape)
-                            .clickable { onChange(false) { it.copy(colorArgb = c) } })
+                    if (e.kind == ElementKind.TOUCHPAD) {
+                        val t = e.touchpad ?: TouchpadConfig()
+                        SliderRow("Sensitivity", t.sensitivity, 0.2f..3f, format = { "%.1fx".format(it) }) { v -> onChange(true) { it.copy(touchpad = t.copy(sensitivity = v)) } }
+                        SwitchRow("Tap to click", null, t.tapToClick) { v -> onChange(false) { it.copy(touchpad = t.copy(tapToClick = v)) } }
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = p.border)
-                Row {
-                    TextButton(onClick = onDuplicate) { Text("Duplicate") }
-                    TextButton(onClick = onDelete) { Text("Delete", color = p.danger) }
+                // ---- how it looks
+                Column(Modifier.weight(1f)) {
+                    SliderRow("Width", e.widthDp, 24f..320f, format = { "${it.toInt()} dp" }) { v -> onChange(true) { it.copy(widthDp = v) } }
+                    SliderRow("Height", e.heightDp, 24f..320f, format = { "${it.toInt()} dp" }) { v -> onChange(true) { it.copy(heightDp = v) } }
+                    SliderRow("Opacity", e.opacity, 0f..1f, format = { "${(it * 100).toInt()}%" }) { v -> onChange(true) { it.copy(opacity = v) } }
+                    SliderRow("Corner radius", e.cornerRadius, 0f..0.5f, format = { "${(it * 200).toInt()}%" }) { v -> onChange(true) { it.copy(cornerRadius = v) } }
+                    GroupLabel("Colour")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SWATCHES.forEach { c ->
+                            val sel = c == e.colorArgb
+                            Box(Modifier.size(30.dp).background(if (sel) Color(0xFF6CC349) else Color(0xFF0E0E0F)).padding(if (sel) 3.dp else 2.dp)
+                                .background(Color(c.toInt())).clickable { onChange(false) { it.copy(colorArgb = c) } })
+                        }
+                    }
                 }
             }
         }
@@ -400,7 +436,6 @@ open class ControlEditorActivity : ComponentActivity() {
     /** Searchable key/mouse/special action picker. */
     @Composable
     private fun KeyPicker(layout: ControlLayout, mode: String, keysOnly: Boolean = false, onDismiss: () -> Unit, onPick: (InputAction) -> Unit) {
-        val p = LocalPalette.current
         var q by remember { mutableStateOf("") }
         val groups: List<Pair<String, List<InputAction>>> = remember(layout, mode, keysOnly) {
             val keys = Glfw.names.keys
@@ -418,22 +453,20 @@ open class ControlEditorActivity : ComponentActivity() {
                     layout.modes.keys.filter { it != mode }.map { InputAction.SwitchMode(it) }))
             }
         }
-        Dialog(onDismissRequest = onDismiss) {
-            Column(Modifier.width(380.dp).heightIn(max = 520.dp).background(p.elevated, RoundedCornerShape(16.dp)).padding(12.dp)) {
-                OutlinedTextField(q, { q = it }, label = { Text("Search keys") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                LazyColumn(Modifier.padding(top = 8.dp)) {
-                    groups.forEach { (title, items) ->
-                        val shown = items.filter { q.isBlank() || it.describe().contains(q, ignoreCase = true) }
-                        if (shown.isNotEmpty()) {
-                            item { Text(title, color = p.textSecondary, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) }
-                            items(shown.chunked(4)) { row ->
-                                Row {
-                                    row.forEach { a ->
-                                        Box(Modifier.weight(1f).padding(3.dp).height(40.dp).background(p.card, RoundedCornerShape(8.dp)).border(1.dp, p.border, RoundedCornerShape(8.dp))
-                                            .clickable { onPick(a) }, contentAlignment = Alignment.Center) { Text(a.describe(), color = p.text, fontSize = 13.sp, maxLines = 1) }
-                                    }
-                                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
+        val perRow = if (LocalConfiguration.current.screenWidthDp >= 600) 6 else 4
+        PixelDialog(onDismiss, if (keysOnly) "Pick a key" else "Pick a key or action", widthFraction = 0.8f, scroll = false, buttons = {
+            PixelButton("Cancel", onDismiss, height = 34.dp, fontSize = 11.sp)
+        }) {
+            PixelTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = "Search keys (e.g. shift, F5)")
+            LazyColumn(Modifier.padding(top = 6.dp).fillMaxWidth().heightIn(max = 600.dp)) {
+                groups.forEach { (title, items) ->
+                    val shown = items.filter { q.isBlank() || it.describe().contains(q, ignoreCase = true) }
+                    if (shown.isNotEmpty()) {
+                        item(key = "h_$title") { GroupLabel(title) }
+                        items(shown.chunked(perRow)) { row ->
+                            Row(Modifier.padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { a -> PixelButton(a.describe(), { onPick(a) }, Modifier.weight(1f), height = 34.dp, fontSize = 10.sp) }
+                                repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }
@@ -445,45 +478,43 @@ open class ControlEditorActivity : ComponentActivity() {
     // ---------------------------------------------------------------- layout manager
     @Composable
     private fun LayoutsDialog(store: ControlLayoutStore, currentId: String, onDismiss: () -> Unit, onOpen: (ControlLayout) -> Unit, onMessage: (String) -> Unit) {
-        val p = LocalPalette.current
         var all by remember { mutableStateOf(store.list()) }
         var creating by remember { mutableStateOf(false) }
         var deleting by remember { mutableStateOf<ControlLayout?>(null) }
-        Dialog(onDismissRequest = onDismiss) {
-            Column(Modifier.width(380.dp).heightIn(max = 520.dp).background(p.elevated, RoundedCornerShape(16.dp)).padding(16.dp)) {
-                Text("Layouts", color = p.text, fontSize = 18.sp)
-                LazyColumn(Modifier.weight(1f, fill = false).padding(vertical = 8.dp)) {
-                    items(all, key = { it.id }) { l ->
-                        Row(Modifier.fillMaxWidth().clickable { onOpen(l) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        PixelDialog(onDismiss, "Layouts", widthFraction = 0.62f, scroll = false, buttons = {
+            PixelButton("Close", onDismiss, height = 34.dp, fontSize = 11.sp)
+            PixelButton("New layout", { creating = true }, style = PxStyle.PRIMARY, icon = "plus", height = 34.dp, fontSize = 11.sp)
+        }) {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(all, key = { it.id }) { l ->
+                    val current = l.id == currentId
+                    PixelPanel(Modifier.fillMaxWidth().clickable { onOpen(l) }, selected = current, padding = 6.dp) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PixelIcon("gamepad", size = 22.dp); Spacer(Modifier.width(8.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(l.name + if (l.id == currentId) "  (editing)" else "", color = p.text)
-                                Text("${l.modes.size} modes · ${l.modes.values.sumOf { it.size }} controls", color = p.textSecondary, fontSize = 12.sp)
+                                Text(l.name + if (current) "  (editing)" else "", color = Color.White, fontFamily = Monocraft, fontSize = 12.sp, lineHeight = 14.sp, maxLines = 1)
+                                Text("${l.modes.size} modes · ${l.modes.values.sumOf { it.size }} controls", color = Color(0xFF9A9B9D), fontFamily = Monocraft, fontSize = 10.sp, lineHeight = 12.sp)
                             }
-                            if (l.id != ControlLayoutStore.DEFAULT_ID) TextButton(onClick = { deleting = l }) { Text("Delete", color = p.danger) }
+                            if (l.id != ControlLayoutStore.DEFAULT_ID) PixelIconButton("trash", "Delete ${l.name}", { deleting = l }, style = PxStyle.DANGER, size = 32.dp)
                         }
                     }
-                }
-                Row {
-                    TextButton(onClick = { creating = true }) { Text("New layout") }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Close") }
                 }
             }
         }
         if (creating) {
             var name by remember { mutableStateOf("") }
             var base by remember { mutableStateOf(DefaultLayouts.all().first()) }
-            AlertDialog(onDismissRequest = { creating = false }, title = { Text("New layout") },
-                text = { Column {
-                    OutlinedTextField(name, { name = it.take(48) }, label = { Text("Name") }, singleLine = true)
-                    ChoiceRow("Start from", DefaultLayouts.all(), base, label = { it.name }) { base = it }
-                } },
-                confirmButton = { TextButton(onClick = {
+            PixelDialog({ creating = false }, "New layout", widthFraction = 0.6f, buttons = {
+                PixelButton("Cancel", { creating = false }, height = 34.dp, fontSize = 11.sp)
+                PixelButton("Create", {
                     val id = LayoutIds.fromName(name, all.map { it.id }.toSet())
                     runCatching { base.copy(id = id, name = name.ifBlank { "Layout" }).also(store::save) }
                         .onSuccess { l -> all = store.list(); creating = false; onOpen(l) }.onFailure { onMessage("Cannot create: ${it.message}") }
-                }) { Text("Create") } },
-                dismissButton = { TextButton(onClick = { creating = false }) { Text("Cancel") } })
+                }, style = PxStyle.PRIMARY, icon = "check", height = 34.dp, fontSize = 11.sp)
+            }) {
+                AppTextField(name, { name = it.take(48) }, "Name", placeholder = "My layout")
+                ChoiceRow("Start from", DefaultLayouts.all(), base, label = { it.name }) { base = it }
+            }
         }
         deleting?.let { l ->
             ConfirmDialog("Delete '${l.name}'?", "Profiles using it fall back to the default layout.", "Delete", true,

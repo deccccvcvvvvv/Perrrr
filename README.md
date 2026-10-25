@@ -34,7 +34,7 @@ and a small C native layer (its own GLFW implementation plus an in-process JVM b
   * Desktop/touchpad/immersive/smart cursor modes.
   * Virtual mouse on/off switch (settings, control editor, in-game menu, bindable action), applied live.
   * In-game menu: quick actions, live control tuning, live game/renderer log, FPS/memory info, optional FPS read-out.
-* **Recorder:** MediaProjection + MediaCodec + MediaMuxer in a foreground service.
+* **Recorder:** MediaCodec + MediaMuxer in a foreground service. In "clean video" mode, frames are copied straight from the game renderer into the encoder, so the on-screen controls are not recorded. It falls back to MediaProjection screen capture when the renderer cannot do this. Game audio uses playback capture.
   * Presets limited by the device encoders.
   * Pause/resume.
   * Game audio on Android 10+.

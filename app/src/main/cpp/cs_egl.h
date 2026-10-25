@@ -40,6 +40,10 @@ extern void *(*p_eglGetProcAddress)(const char *);
 /* Frames presented by the game (glfwSwapBuffers / SDL_GL_SwapWindow); read by the launcher's FPS read-out. */
 extern volatile long g_frameCount;
 
+/* record_gl.c: copies the presented frame into the clean-recording encoder surface (no-op when not recording).
+ * Must be called on the render thread with the game context current, right before eglSwapBuffers. */
+void cs_record_frame(void);
+
 int cs_load_backend(void);              /* idempotent; 1 on success */
 ANativeWindow *cs_wait_window(void);    /* blocks until the activity provides a window; returns an acquired reference */
 

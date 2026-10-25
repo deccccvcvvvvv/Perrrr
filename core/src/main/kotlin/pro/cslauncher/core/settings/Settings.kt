@@ -49,6 +49,8 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val resolution: RecordingResolution = RecordingResolution.P720, val fps: Int = 30, val quality: RecordingQuality = RecordingQuality.BALANCED,
     val customBitrateKbps: Int = 6000, val preferHevc: Boolean = false, val audio: AudioSourceChoice = AudioSourceChoice.GAME_AUDIO,
     val saveToGallery: Boolean = false, val showOverlay: Boolean = true, val overlayX: Float = 0.02f, val overlayY: Float = 0.08f,
+    /** Clean video: frames are copied from the game's own GL surface, so touch controls, menus and the indicator never appear. */
+    val hideControls: Boolean = true,
 )
 
 @Serializable data class LauncherSettings(
@@ -56,6 +58,8 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val theme: ThemeChoice = ThemeChoice.PIXEL,
     /** Animated pixel landscape behind the launcher (paused when hidden, static with reduced motion). */
     val animatedBackground: Boolean = true,
+    /** Hide the status and navigation bars in the launcher (swipe from an edge to show them briefly). */
+    val fullscreenLauncher: Boolean = true,
     val reduceTransparency: Boolean = false,
     val reduceMotion: Boolean = false,
     val downloadConcurrency: Int = 6,

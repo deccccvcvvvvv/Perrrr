@@ -215,4 +215,6 @@ class PixelScreenshotTest {
     /** In-game menu over the game (the game itself is a live GL surface, stood in for by the launcher scene). */
     @Test fun gameMenuQuick() = gameShot(pro.cslauncher.app.game.GameMenuTab.QUICK)
     @Test fun gameMenuControls() = gameShot(pro.cslauncher.app.game.GameMenuTab.CONTROLS)
+    @Test fun gameMenuLog() = gameShot(pro.cslauncher.app.game.GameMenuTab.LOG)
+    @Test fun gameMenuInfo() = gameShot(pro.cslauncher.app.game.GameMenuTab.INFO)
 }

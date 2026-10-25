@@ -11,6 +11,8 @@
 
 struct mock_state mock;
 volatile long g_frameCount = 0;
+int g_recordFrames = 0;
+void cs_record_frame(void) { g_recordFrames++; }   /* record_gl.c hook, counted so tests can see it runs per game frame */
 pthread_mutex_t g_winMu = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t g_winCv = PTHREAD_COND_INITIALIZER;
 ANativeWindow *g_nativeWindow = (ANativeWindow *)0x1234;

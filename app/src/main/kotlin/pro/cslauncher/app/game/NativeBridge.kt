@@ -35,6 +35,10 @@ object NativeBridge {
     @JvmStatic external fun requestClose()
     /** Frames the game has presented since start (FPS read-out = difference per second). */
     @JvmStatic external fun frameCount(): Long
+    /** Clean recording: frames are blitted from the game's EGL surface into [surface] (an encoder input), or stopped with null. */
+    @JvmStatic external fun setRecordTarget(surface: Surface?, fps: Int)
+    /** 0 = no frame yet, 1 = frames reach the encoder, -1 = unsupported with this renderer (use screen capture instead). */
+    @JvmStatic external fun recordStatus(): Int
 
     // ---- VM ----
     @JvmStatic external fun redirectStdio(logPath: String): Boolean
