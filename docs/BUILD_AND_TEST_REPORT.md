@@ -92,6 +92,24 @@ This proves that the metadata, rules, download, verification, argument, state-ma
 * `UsableSpace` ×2: the recorder checks free space with `usableSpace` before recording.
 * `DataExtractionRules` ×1: `allowBackup="false"` is set deliberately, so tokens and worlds are never backed up to the cloud.
 
+## Round 2 (after the first on-device test)
+
+Device feedback: install worked; Play was blocked by *"Game directory not writable: getFileStore"*; opening the control editor crashed.
+
+| Fix / feature | Verification |
+|---|---|
+| Free-space check no longer uses `Files.getFileStore` (throws on Android) → `File.usableSpace`; `check_android_api.py` now flags `getFileStore` | `:app:checkAndroidApi`: 831 classes, 0 incompatible references |
+| Editor crash: geometry is clamped when a control is larger than the area (first 1×1 layout pass) and the editor canvas waits for a real size | unit tests + compile; device re-test pending |
+| Pojav-style editor: tap = properties, drag = move, corner handle = resize, ⚙ menu (add button/joystick/touchpad, modes, undo/redo, grid snap, layouts, import/export, reset) | compiles; device re-test pending |
+| In-game control editing (translucent overlay in the game process; layout reapplied live) | compiles; device re-test pending |
+| Bundled Java 8/17/21/25 (arm64) + LWJGL 3.3.3, GL4ES, MobileGlues (3 ABIs), installed automatically | CI natives job; `RealBundleTest` installs the real archives; APK contents checked in CI |
+| LWJGL Android natives cross-check | all 4,252 `native` methods of the official lwjgl/opengl/stb/tinyfd 3.3.3 jars resolve to exports of the built `.so` files |
+| MobileGlues build | `libmobileglues.so` exports `glXGetProcAddress(ARB)`, EGL entry points, 3,060 GL functions; depends only on system libs |
+| Minecraft 26.x (LWJGL 3.4.3 + SDL3) | blocked before launch with an explicit reason (`LwjglCompat`), unit-tested |
+| Crash report from the previous run shown in *Logs & diagnostics* and included in shared reports | compile |
+
+Core unit tests: 102 + the opt-in real-bundle test, all passing.
+
 ## Not verified (requires hardware)
 
 * Installing or launching the APK, Compose UI rendering, and theme appearance.
