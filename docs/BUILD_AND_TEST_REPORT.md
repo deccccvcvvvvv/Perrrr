@@ -117,11 +117,15 @@ Device feedback: 1.21.x crashed at launch (ICU `PatternSyntaxException` in the a
 | Fix / feature | Verification |
 |---|---|
 | Placeholder regex escapes `}` (ICU rejects it); `tools/check_regex_icu.py` lints every regex literal; wired into `checkAndroidApi` | CI run 40192786231 green (commit `3209b48`) |
-| LWJGL 3.4.3 Android build for Minecraft 26.x (`tools/natives34/build.sh`): LWJGL natives (libffi 3.8.0), FreeType 2.14.3, OpenAL Soft, shaderc v2026.2, SPIRV-Cross 1.4.341.0; bundled as component `lwjgl34-android` next to the 3.3.3 one | `verify_exports.py`: 5,032 symbols that the 3.4.3 jars bind (JNI methods + dynamically resolved functions incl. glslang/SPIRV-Tools C APIs) resolve, 0 problems (local arm64 build; repeated in CI) |
+| LWJGL 3.4.3 Android build for Minecraft 26.x (`tools/natives34/build.sh`): LWJGL natives (libffi 3.8.0), FreeType 2.14.3, OpenAL Soft, shaderc v2026.2, SPIRV-Cross 1.4.341.0; bundled as component `lwjgl34-android` next to the 3.3.3 one | `verify_exports.py`: 5,032 symbols that the 3.4.3 jars bind (JNI methods + dynamically resolved functions incl. glslang/SPIRV-Tools C APIs) resolve, 0 problems (local arm64 build; repeated in CI run 40196553754, `natives34` job) |
 | SDL3 implementation for 26.3+ (`cssdl3.c`, inside `libcsglfw.so`): window, shared EGL surface, GL context (real version reported), GetProcAddress identical to LWJGL's GL provider, keyboard/text/mouse/relative mode/wheel, displays, clipboard, URLs, message boxes, surfaces; the remaining 830 LWJGL-bound SDL functions fail cleanly via generated stubs | host test `tools/natives34/hosttest`: 70/70 scenario checks (Minecraft's startup sequence, input, rotation/resume surface rebuild, shutdown); LWJGL's real `org.lwjgl.sdl` bindings load the bridge (48 function classes) and round-trip an event; struct layouts identical to LWJGL 3.4.3's; every Minecraft-referenced SDL function is implemented, none is a stub |
 | GLFW IME/preedit functions (used by 26.1/26.2) | compiled into all 3 ABIs; exports checked in the APK |
 | LWJGL component chosen per game (3.2/3.3 → 3.3.3, 3.4.x → 3.4.3); SDL/shaderc/spvc library paths; Vulkan deliberately unavailable (Minecraft falls back to OpenGL); Zink/GL4ES reported unsupported for SDL3 versions, MobileGlues selected | 4 new unit tests; `:core:test` 106/106 |
 | `libshaderc.so`/`libspirv-cross.so` linked `-Bsymbolic` so they never bind to the glslang/SPIRV-Cross copies inside MobileGlues | `DT_FLAGS SYMBOLIC` present |
+
+### APK for Round 3
+
+CI run 40196553754: `natives` and `natives34` passed (export verification 5,032 symbols / 0 problems, SDL3 host test 70/70, stub freshness). The `build` job did not start; GitHub reported failed account payments or a spending limit. The APK was assembled outside CI from that run's artifacts using the workflow's steps. All gates passed: `:core:test` 106/106, `RealBundleTest`, `checkRegexIcu`, `checkAndroidApi`, `lintDebug`, `assembleDebug` and the APK content checks. It is published as GitHub Release `v1.0.0-round3`: 168,820,064 bytes, SHA-256 `fa4be06de77eeba12ecaa64257977f1673c25c962a2b7044b6cb3db43c9012f8`, commit `8662fa8`.
 
 ## Not verified (requires hardware)
 
