@@ -242,13 +242,16 @@ runtimes() { # abi out
   done
 }
 
+# Output directories are resolved before any step changes the working directory.
+abs_out() { mkdir -p "$1" && (cd "$1" && pwd); }
+
 case "${1:-}" in
   gen) gen_lwjgl ;;
-  build) setup_abi "$2"; gen_lwjgl; build_libffi; build_lwjgl; build_freetype; build_openal; fetch_lwjgl_jars; build_gl4es; build_mobileglues; package "$2" "$3" ;;
+  build) OUTDIR="$(abs_out "${3:?output dir}")"; setup_abi "$2"; gen_lwjgl; build_libffi; build_lwjgl; build_freetype; build_openal; fetch_lwjgl_jars; build_gl4es; build_mobileglues; package "$2" "$OUTDIR" ;;
   lwjgl) setup_abi "$2"; build_libffi; build_lwjgl ;;   # development helper
   ffiprobe) setup_abi "$2"; build_libffi >&2; ffi_abi_defs "$3" ;;   # development helper: <abi> <LibFFI.c>
   gl4es) setup_abi "$2"; build_gl4es ;;
   mobileglues) setup_abi "$2"; build_mobileglues ;;
-  runtimes) ABI="$2"; runtimes "$2" "$3" ;;   # no NDK needed
+  runtimes) ABI="$2"; runtimes "$2" "$(abs_out "${3:?output dir}")" ;;   # no NDK needed
   *) echo "usage: $0 gen | build <abi> <out> | runtimes <abi> <out>"; exit 2 ;;
 esac
