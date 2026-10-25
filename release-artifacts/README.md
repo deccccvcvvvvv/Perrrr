@@ -2,7 +2,25 @@
 
 The APK is ~169 MB because Java 8/17/21/25, all renderer components and both LWJGL builds (3.3.3 and 3.4.3) are bundled.
 
-## Latest build: Round 4 (pointer-tag launch abort, renderer lock-out)
+## Latest build: Round 5 (26.3 libc++ fix, OptiFine, modpacks, landscape pixel UI)
+
+* GitHub Release `v1.0.2-round5` (pre-release, id 423515208); the repo is private, so log in to download:
+  https://github.com/JoooaoooDVD/Pro/releases/tag/v1.0.2-round5
+* File: `CSLauncherPro-1.0.2-round5-debug.apk`, 169,675,705 bytes
+* SHA-256: `395d30d67155d2092d4d653a753a412e8df67c52dc8cdf47cab2c526deddc58b` (checked again after downloading it back through the API)
+* Source: commit `d8037f7`
+* Signed with the shared debug key (cert SHA-256 `0ce5f955…068c66c`), so it installs as an update over Round 3 and Round 4.
+* Built outside CI, because GitHub Actions still cannot start jobs (billing). Gates passed:
+  * `:core:test` 129/129
+  * `:app:testDebugUnitTest` 3/3
+  * `checkAndroidApi`
+  * `lintDebug` (0 errors)
+  * `assembleDebug`
+  * `tools/check_bundle_needed.py`: every DT_NEEDED resolves for all 169 shared libraries
+  * Paparazzi landscape screenshots
+* Not device-verified yet: the 26.3 launch with the libc++ fix, and OptiFine in-game.
+
+## Round 4 build (pointer-tag launch abort, renderer lock-out)
 
 * GitHub Release `v1.0.1-round4` (pre-release); the repo is private, so log in to download:
   https://github.com/JoooaoooDVD/Pro/releases/tag/v1.0.1-round4
