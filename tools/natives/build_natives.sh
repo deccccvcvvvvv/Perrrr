@@ -80,6 +80,11 @@ build_libffi() {
 }
 
 # ------------------------------------------------------------------------------------------------ LWJGL natives
+quiet() { # label cmd...   run with output captured; print the last lines if it fails
+  local label="$1"; shift; local logf="$B/$label.log"
+  if ! "$@" > "$logf" 2>&1; then echo "---- $label failed; last lines of $logf:"; grep -vE "Deprecation Warning|Compatibility with CMake|^\s*$" "$logf" | tail -60; return 1; fi
+}
+
 lw_compile() { # outdir cflags... -- files...   (fails if any translation unit fails)
   local out="$1"; shift; local flags=(); while [ "$1" != "--" ]; do flags+=("$1"); shift; done; shift
   mkdir -p "$out"; rm -f "$out/.failed"
@@ -181,8 +186,8 @@ build_mobileglues() {
       git -C "$src" submodule update --init --depth 1 "$m"
     done
   fi
-  cmake -S "$src/MobileGlues-cpp" -B "$B/mobileglues" "${CMAKE_ANDROID[@]}" >/dev/null
-  cmake --build "$B/mobileglues" --target mobileglues -j"$JOBS" >/dev/null
+  quiet mobileglues-configure cmake -S "$src/MobileGlues-cpp" -B "$B/mobileglues" "${CMAKE_ANDROID[@]}"
+  quiet mobileglues-build cmake --build "$B/mobileglues" --target mobileglues -j"$JOBS"
   mkdir -p "$STAGE/mobileglues/lib"; cp "$B/mobileglues/libmobileglues.so" "$STAGE/mobileglues/lib/"
   "$STRIP" --strip-unneeded "$STAGE/mobileglues/lib/libmobileglues.so"
   endlog
