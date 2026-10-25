@@ -1,5 +1,7 @@
 package pro.cslauncher.core.launch
 
+import pro.cslauncher.core.component.LwjglCompat
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -119,6 +121,7 @@ class LaunchCoordinator(
             if (lwjgl == null) { issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "The LWJGL 3 Android component is not installed", FixAction.INSTALL_COMPONENT); block(LaunchState.PREPARING_RENDERER) }
             val bad = components!!.verify(lwjgl)
             if (bad.isNotEmpty()) { issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "LWJGL component is damaged: ${bad.first()}", FixAction.INSTALL_COMPONENT); block(LaunchState.PREPARING_RENDERER) }
+            LwjglCompat.problem(rv.libraries.map { it.library.coordinate }, lwjgl.lwjglVersion)?.let { issues += LaunchIssue(LaunchState.PREPARING_RENDERER, it, FixAction.EDIT_PROFILE); block(LaunchState.PREPARING_RENDERER) }
         }
         val memo = p.rendererMemo?.let { it.rendererId to it.fingerprint }
         val decision = renderers.decide(env, p.rendererId, p.rendererOptions, memo, req.failedRendererFingerprints)

@@ -84,3 +84,19 @@ class ComponentManager(private val dirs: LauncherDirs) {
 
     fun remove(id: String) = FsUtil.deleteTreeWithin(dirs.componentRoot, dirs.componentRoot.resolve(LauncherDirs.checkId(id)))
 }
+
+/**
+ * Checks whether the bundled Android LWJGL build can stand in for the LWJGL the game was built against.
+ * Returns a user-facing reason when it cannot (e.g. Minecraft 26.x moved to LWJGL 3.4 with SDL3 instead of GLFW).
+ */
+object LwjglCompat {
+    fun problem(gameLibraries: List<pro.cslauncher.core.meta.MavenCoordinate>, componentVersion: String?): String? {
+        val lw = gameLibraries.filter { it.group == "org.lwjgl" }
+        if (lw.isEmpty() || componentVersion == null) return null
+        if (lw.any { it.artifact == "lwjgl-sdl" })
+            return "This Minecraft version uses LWJGL ${lw.first { it.artifact == "lwjgl-sdl" }.version} with SDL3 windowing, which the bundled Android bridge (GLFW, LWJGL $componentVersion) does not support yet. Use Minecraft 1.21.10 or older."
+        val game = lw.firstOrNull { it.artifact == "lwjgl" }?.version ?: return null
+        fun mm(v: String) = v.split('.', '-').take(2).map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 0 } shl 16) + it.getOrElse(1) { 0 } }
+        return if (mm(game) > mm(componentVersion)) "This Minecraft version needs LWJGL $game; the bundled Android LWJGL is $componentVersion." else null
+    }
+}

@@ -45,9 +45,23 @@ jobs:
           "$SDKM" "ndk;$NDK_VERSION" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
-      - name: Cache LWJGL generator output
+      # Saved right after generation (not at job end) so a later native compile failure does not discard it.
+      - name: Restore LWJGL generator output
+        id: gen
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
+        with:
+          path: .natives-work/lwjgl3
+          key: lwjgl-gen-3.3.3-v1
+
+      - name: Generate LWJGL bindings
+        if: steps.cache.outputs.cache-hit != 'true' && steps.gen.outputs.cache-hit != 'true'
+        run: tools/natives/build_natives.sh gen
+
+      - name: Save LWJGL generator output
+        if: steps.cache.outputs.cache-hit != 'true' && steps.gen.outputs.cache-hit != 'true'
+        continue-on-error: true   # parallel matrix jobs race for the same key; one save is enough
+        uses: actions/cache/save@v4
         with:
           path: .natives-work/lwjgl3
           key: lwjgl-gen-3.3.3-v1

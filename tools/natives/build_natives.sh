@@ -80,15 +80,24 @@ build_libffi() {
 }
 
 # ------------------------------------------------------------------------------------------------ LWJGL natives
-lw_compile() { # outdir cflags... -- files...
+lw_compile() { # outdir cflags... -- files...   (fails if any translation unit fails)
   local out="$1"; shift; local flags=(); while [ "$1" != "--" ]; do flags+=("$1"); shift; done; shift
-  mkdir -p "$out"
+  mkdir -p "$out"; rm -f "$out/.failed"
   for f in "$@"; do
-    "$CC" "${flags[@]}" -c "$f" -o "$out/$(basename "${f%.*}").o" &
-    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n; done
+    { "$CC" "${flags[@]}" -c "$f" -o "$out/$(basename "${f%.*}").o" || echo "$f" >> "$out/.failed"; } &
+    while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n || true; done
   done
-  while [ -n "$(jobs -rp)" ]; do wait -n; done
-  wait
+  wait || true
+  if [ -s "$out/.failed" ]; then echo "compile failed:"; cat "$out/.failed"; return 1; fi
+}
+
+# libffi only declares the ABI enum values of the target architecture, while LWJGL's generated LibFFI.c references
+# every ABI it knows. Probe each name with the target compiler and map the missing ones to -1 ("not available").
+ffi_abi_defs() { # generated LibFFI.c
+  local n
+  for n in $(grep -oE 'return \(jint\)FFI_[A-Z0-9_]+;' "$1" | sed -E 's/.*\(jint\)(FFI_[A-Z0-9_]+);/\1/' | sort -u); do
+    printf '#include "ffi.h"\nint cs_probe(void) { return (int)%s; }\n' "$n" | "$CC" -I"$FFI/include" -x c -c - -o /dev/null 2>/dev/null || echo "-D$n=-1"
+  done
 }
 
 build_lwjgl() {
@@ -102,7 +111,9 @@ build_lwjgl() {
   # core: everything LWJGL's Linux build compiles except io_uring (needs kernel/libc features Android apps cannot rely on)
   local core_src=("$L"/core/src/main/c/*.c "$L"/core/src/generated/c/*.c)
   for f in "$L"/core/src/generated/c/linux/*.c; do case "$(basename "$f")" in *liburing*|*LibURing*|*IOURing*) ;; *) core_src+=("$f");; esac; done
-  lw_compile "$B/o-core" "${common[@]}" -I"$FFI/include" -- "${core_src[@]}"
+  local ffidefs; ffidefs=($(ffi_abi_defs "$L/core/src/generated/c/org_lwjgl_system_libffi_LibFFI.c"))
+  echo "libffi ABIs unavailable on $ABI: ${ffidefs[*]:-none}"
+  lw_compile "$B/o-core" "${common[@]}" -I"$FFI/include" "${ffidefs[@]}" -- "${core_src[@]}"
   "$CC" -shared -o "$OUT/liblwjgl.so" "$B"/o-core/*.o "$FFI/lib/libffi.a" -Wl,--no-undefined -Wl,--version-script,"$vs" -Wl,-z,noexecstack -ldl -lm -llog
 
   # opengl (GLX/WGL entry points are looked up at run time; WGL is Windows only)
@@ -224,6 +235,7 @@ case "${1:-}" in
   gen) gen_lwjgl ;;
   build) setup_abi "$2"; gen_lwjgl; build_libffi; build_lwjgl; build_freetype; build_openal; fetch_lwjgl_jars; build_gl4es; build_mobileglues; package "$2" "$3" ;;
   lwjgl) setup_abi "$2"; build_libffi; build_lwjgl ;;   # development helper
+  ffiprobe) setup_abi "$2"; build_libffi >&2; ffi_abi_defs "$3" ;;   # development helper: <abi> <LibFFI.c>
   gl4es) setup_abi "$2"; build_gl4es ;;
   mobileglues) setup_abi "$2"; build_mobileglues ;;
   runtimes) ABI="$2"; runtimes "$2" "$3" ;;   # no NDK needed

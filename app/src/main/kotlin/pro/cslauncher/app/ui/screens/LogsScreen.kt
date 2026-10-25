@@ -37,6 +37,7 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
     val gameLog = remember(sessionDir) { sessionDir?.let { File(it, "game-output.log") }?.takeIf { it.isFile }?.let { val x = Log4jXml(); tail(it, 400).lines().flatMap { l -> x.feed(l) }.joinToString("\n") }.orEmpty() }
     val launcherLog = remember { tail(Services.launcherLogFile, 300) }
     var repairing by remember { mutableStateOf<String?>(null) }
+    var lastCrash by remember { mutableStateOf(Services.lastCrashFile.takeIf { it.isFile }?.readText()?.take(6000)) }
 
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Logs & diagnostics", onBack) {
@@ -46,6 +47,7 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                     appendLine("GLES ${Services.device.glesVersion}, Vulkan ${Services.device.vulkanApi}")
                     ui.failure?.let { f -> appendLine("\n== ${f.title} =="); f.issues.forEach { appendLine("- ${it.stage}: ${it.message}") }; f.diagnoses.forEach { d -> appendLine("* ${d.kind.title}: ${d.explanation}"); d.evidence.forEach { appendLine("    $it") } } }
                     sessionDir?.let { File(it, "command-line.txt") }?.takeIf { it.isFile }?.let { appendLine("\n== Command line (redacted) =="); appendLine(it.readText()) }
+                    lastCrash?.let { appendLine("\n== Last launcher crash =="); appendLine(it) }
                     appendLine("\n== Game log (tail) =="); appendLine(gameLog)
                     appendLine("\n== Launcher log (tail) =="); appendLine(launcherLog)
                 }
@@ -55,6 +57,15 @@ fun LogsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                 ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_STREAM, uri)
                     .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             }) { Text("Share report", color = p.accent) }
+        }
+        lastCrash?.let { c ->
+            CsCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("The launcher crashed last time", color = p.danger, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { Services.lastCrashFile.delete(); lastCrash = null }) { Text("Dismiss", color = p.accent) }
+                }
+                Text(c.lines().take(12).joinToString("\n"), color = p.textSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            }
         }
         ui.failure?.let { f ->
             CsCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {

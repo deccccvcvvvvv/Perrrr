@@ -36,6 +36,9 @@ for r in roots:
     else:
         for d, _, fs in os.walk(r): files += [os.path.join(d, f) for f in fs if f.endswith('.class')]
 problems = defaultdict(set)
+# Present in api-versions.xml but throwing at runtime on Android's default file system / runtime.
+KNOWN_BROKEN = {('java/nio/file/Files', 'getFileStore'): 'throws on Android (no FileStore for app storage); use StatFs/File.usableSpace',
+                ('java/nio/file/FileSystem', 'getFileStores'): 'unsupported on Android'}
 for i in range(0, len(files), 200):
     batch = files[i:i+200]
     cmd = ['javap', '-c', '-p'] + batch
@@ -48,6 +51,8 @@ for i in range(0, len(files), 200):
         kind, owner, name, desc = m.groups(); name = name.strip('"')
         if not owner.startswith(('java/', 'javax/')): continue
         key = name if kind == 'Field' else name + desc
+        if (owner, name) in KNOWN_BROKEN:
+            problems[f'{owner}.{name} ({KNOWN_BROKEN[(owner, name)]})'].add(current); continue
         if owner not in classes:
             problems[f'{owner} (class missing on Android)'].add(current); continue
         csince = classes[owner][0]

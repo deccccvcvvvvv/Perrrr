@@ -20,6 +20,7 @@ object Hashing {
     fun sha256(path: Path) = digest(path, "SHA-256")
     fun sha512(path: Path) = digest(path, "SHA-512")
     fun sha1(bytes: ByteArray): String = MessageDigest.getInstance("SHA-1").digest(bytes).toHex()
+    fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
     fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
 
