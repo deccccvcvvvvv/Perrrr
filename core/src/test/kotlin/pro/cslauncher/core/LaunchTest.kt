@@ -78,8 +78,32 @@ class LaunchTest {
         assertTrue(plan.jvmArgs.any { it.startsWith("-Dorg.lwjgl.glfw.libname=") && it.endsWith("libcsglfw.so") })
         assertTrue(plan.jvmArgs.any { it == "-Dorg.lwjgl.opengl.libname=$gl4es" })
         assertEquals("21", plan.env["LIBGL_GL"]); assertEquals("EGL_GLES2", plan.rendererContext)
+        assertTrue(plan.jvmArgs.none { it.startsWith("-Dorg.lwjgl.sdl.libname=") || it.startsWith("-Dorg.lwjgl.shaderc.libname=") }, "LWJGL 3.3: no 3.4 properties")
         val n = JvmOptionNormalizer.normalize(plan.jvmArgs)
         assertTrue(n.options.any { it.startsWith("-Djava.class.path=") }); assertFalse("-cp" in n.options)
+    }
+
+    @Test fun androidPlanForLwjgl34AddsSdlBridgeAndShaderToolchain() {
+        val dirs = LauncherDirs(tempDir())
+        val rv = Installer(dirs, http, DownloadManager(http), android).resolveLibraries(meta, listOf("1.20.1"), "1.20.1")
+        val compDir = tempDir(); Files.createDirectories(compDir.resolve("lib"))
+        val comp = InstalledComponent(ComponentManifest(1, "lwjgl34-android", "LWJGL", "3.4.3-r1", "lwjgl", "arm64-v8a", "BSD-3-Clause", "test",
+            listOf("lwjgl:3.4.3", "lib:libshaderc.so", "lib:libspirv-cross.so"), listOf("jars/lwjgl.jar"), "lib", emptyList()), compDir)
+        val mg = tempDir().resolve("libmobileglues.so").also { Files.write(it, ByteArray(1)) }
+        val renv = env(android, mapOf("libmobileglues.so" to mg), needsGl32 = true)
+        val shim = tempDir().resolve("libcsglfw.so")
+        val plan = LaunchPlanner(dirs, android).plan(LaunchInput(Profile(name = "B", versionId = "26.3"), rv, fakeRuntime(tempDir(), 25, "aarch64", true), offline,
+            MobileGluesBackend().configure(renv, emptyMap()), 2048, 1920, 1080, tempDir(), comp, shim))
+        val lib = compDir.resolve("lib").toAbsolutePath()
+        assertTrue("-Dorg.lwjgl.sdl.libname=${shim.toAbsolutePath()}" in plan.jvmArgs, "SDL3 calls go to the bridge in libcsglfw.so")
+        assertTrue("-Dorg.lwjgl.glfw.libname=${shim.toAbsolutePath()}" in plan.jvmArgs, "26.1/26.2 still use GLFW")
+        assertTrue("-Dorg.lwjgl.shaderc.libname=${lib.resolve("libshaderc.so")}" in plan.jvmArgs)
+        assertTrue("-Dorg.lwjgl.spvc.libname=${lib.resolve("libspirv-cross.so")}" in plan.jvmArgs)
+        val vk = plan.jvmArgs.single { it.startsWith("-Dorg.lwjgl.vulkan.libname=") }.substringAfter('=')
+        assertFalse(Files.exists(java.nio.file.Paths.get(vk)), "Vulkan deliberately unavailable -> Minecraft stays on OpenGL")
+        // AndroidRuntimeEnv must not override it with the system loader
+        val e = AndroidRuntimeEnv.build("/r/lib/server/libjvm.so", 25, listOf(lib.toString()), emptyMap(), "/t", "/g", "/r", "UTC", "14", plan.jvmArgs)
+        assertTrue(e.jvmOptions.none { it.startsWith("-Dorg.lwjgl.vulkan.libname=") })
     }
 
     @Test fun invalidUserJvmArgsAreRejected() {

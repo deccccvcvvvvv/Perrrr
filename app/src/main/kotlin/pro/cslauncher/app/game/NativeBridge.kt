@@ -17,6 +17,8 @@ object NativeBridge {
         fun onLogLine(line: String) {}
         fun onJvmExit(code: Int) {}
         fun onWindowReady(width: Int, height: Int) {}
+        /** The game asked to open a link (SDL_OpenURL). Return true if it was handed to the system. */
+        fun onOpenUrl(url: String): Boolean = false
     }
     @Volatile var listener: Listener? = null
 
@@ -49,4 +51,5 @@ object NativeBridge {
     @JvmStatic fun onLogLine(line: String) { listener?.onLogLine(line) }
     @JvmStatic fun onJvmExit(code: Int) { listener?.onJvmExit(code) }
     @JvmStatic fun onWindowReady(width: Int, height: Int) { listener?.onWindowReady(width, height) }
+    @JvmStatic fun onOpenUrl(url: String): Boolean = listener?.onOpenUrl(url) ?: false
 }

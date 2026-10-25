@@ -115,7 +115,7 @@ class LaunchCoordinator(
                 .onFailure { CsLog.w("Launch", "Bundled component setup failed: ${it.message}"); issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "Bundled component setup failed: ${it.message}", FixAction.INSTALL_COMPONENT, blocking = false) }
         }
         val env = req.environment(rv)
-        val lwjgl = if (platform.isAndroid) components?.lwjgl(platform.arch.androidAbi!!) else null
+        val lwjgl = if (platform.isAndroid) components?.lwjgl(platform.arch.androidAbi!!, LwjglCompat.gameVersion(rv.libraries.map { it.library.coordinate })) else null
         if (platform.isAndroid) {
             if (!rv.meta.usesLwjgl3) { issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "Minecraft ${rv.meta.id} uses LWJGL 2; CS Launcher Pro currently supports LWJGL 3 versions (1.13+)", FixAction.EDIT_PROFILE); block(LaunchState.PREPARING_RENDERER) }
             if (lwjgl == null) { issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "The LWJGL 3 Android component is not installed", FixAction.INSTALL_COMPONENT); block(LaunchState.PREPARING_RENDERER) }

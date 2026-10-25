@@ -29,8 +29,9 @@ bundled**, and it has **not been run on any device**.
 
 | Versions | Java | LWJGL | Renderer path on Android (auto) | Status |
 |---|---|---|---|---|
-| 26.x (26.1 – 26.4 snapshots) | 25 | **3.4.3 + SDL3** | — | **Blocked with an explicit message.** These versions replaced GLFW with SDL3 and use LWJGL 3.4; the bundled bridge implements GLFW on LWJGL 3.3.3. An SDL3 bridge and an LWJGL 3.4 Android build are future work |
-| 1.17 – 1.21.10 | 16/17/21 | 3.2.x – 3.3.3 | MobileGlues (GL 4.x over GLES 3.x), then Zink, then GL4ES | Launch path implemented. Bundled runtime + LWJGL 3.3.3 + MobileGlues |
+| 26.3 and newer (SDL3) | 25 | **3.4.3 + SDL3** | MobileGlues only (OpenGL 3.3+ core over GLES 3.x; Zink/GL4ES are reported as unsupported with the reason) | **Launch path implemented, arm64-v8a only, not yet device-verified.** The launcher's own SDL3 implementation (`cssdl3.c` in `libcsglfw.so`) provides the window, OpenGL context, input, clipboard and display APIs; the LWJGL 3.4.3 component adds shaderc + SPIRV-Cross for the 26.3 shader pipeline. OpenGL only: Vulkan is deliberately unavailable, and Minecraft falls back to OpenGL by itself. On armeabi-v7a/x86_64 these versions are blocked with an explicit message (no LWJGL 3.4 build for those ABIs yet) |
+| 26.1 – 26.2 (GLFW) | 25 | 3.4.1 | MobileGlues, then Zink | Launch path implemented (arm64-v8a): LWJGL 3.4.3 component + the GLFW bridge (now including GLFW's IME/preedit functions these versions call). Not yet device-verified |
+| 1.17 – 1.21.11 | 16/17/21 | 3.2.x – 3.3.3 | MobileGlues (GL 4.x over GLES 3.x), then Zink, then GL4ES | Launch path implemented. Bundled runtime + LWJGL 3.3.3 + MobileGlues |
 | 1.13 – 1.16.5 | 8 | 3.x | GL4ES (GL 2.1 over GLES 2/3), then MobileGlues | Launch path implemented. Bundled runtime + LWJGL + GL4ES |
 | ≤ 1.12.2 | 8 | 2.x | — | **Not supported** (blocked with an explicit message; no LWJGL 2 compatibility layer) |
 | Fabric / Quilt | as vanilla | — | as vanilla | Installed inside the launcher from the official loader metadata (no installer jar) |
@@ -62,6 +63,7 @@ before the first launch (`AutoProvisioner`). No manual import is needed:
 |---|---|---|---|
 | Java 8 / 17 / 21 / 25 for Android | AngelAuraMC `angelauramc-openjdk-build` releases, pinned by SHA-256 | prebuilt (GPLv2+CE) | bundled for arm64-v8a; other ABIs download the same verified archives on demand |
 | LWJGL 3.3.3 (jars incl. glfw/jemalloc; natives for core, opengl, stb, tinyfd, freetype, openal; GLFW is the launcher's own `libcsglfw.so`, the system allocator replaces jemalloc) | LWJGL 3.3.3 sources, libffi 3.4.6, FreeType 2.13.2, OpenAL Soft 1.23.1 | `tools/natives/build_natives.sh` in CI (NDK 26, API 26) | arm64-v8a, armeabi-v7a, x86_64 |
+| LWJGL 3.4.3 for Minecraft 26.x (natives for core, opengl, stb, tinyfd, freetype, openal, shaderc, spirv-cross; jars incl. sdl, glfw, shaderc, spvc, vulkan, vma; SDL3 and GLFW are the launcher's own `libcsglfw.so`) | LWJGL 3.4.3 sources, libffi 3.8.0, FreeType 2.14.3, OpenAL Soft 1.23.1, shaderc v2026.2, SPIRV-Cross 1.4.341.0 | `tools/natives34/build.sh` in CI; every symbol the 3.4.3 jars bind is checked (`verify_exports.py`) | arm64-v8a |
 | GL4ES | ptitSeb/gl4es (pinned commit) | same | same |
 | MobileGlues | MobileGL-Dev/MobileGlues (pinned commit) | same | same |
 

@@ -77,8 +77,59 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # LWJGL 3.4.3 stack for Minecraft 26.x (arm64-v8a): LWJGL natives, libffi, FreeType, OpenAL Soft, shaderc and
+  # SPIRV-Cross, export-verified against the exact jars, plus a host test of the launcher's SDL3 bridge.
+  natives34:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore 3.4 native cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: natives34-out
+          key: natives34-arm64-v8a-${{ hashFiles('tools/natives34/build.sh', 'tools/natives34/verify_exports.py', 'tools/natives34/shaderc_extra_exports.txt') }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install tools (Ant, Ninja, NDK)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ant ninja-build > /dev/null
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          (yes | "$SDKM" --licenses > /dev/null) || true
+          "$SDKM" "ndk;$NDK_VERSION" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Build LWJGL 3.4.3 natives (arm64-v8a)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: JOBS=4 tools/natives34/build.sh build arm64-v8a natives34-out
+
+      - name: Verify exports against the LWJGL 3.4.3 jars
+        run: tools/natives34/build.sh verify natives34-out
+
+      - name: SDL3 bridge host test (scenario + LWJGL bindings)
+        run: tools/natives34/hosttest/run.sh natives34-out/lwjgl34/jars
+
+      - name: SDL3 stubs are up to date
+        run: |
+          python3 tools/natives34/gen_sdl_stubs.py --jar natives34-out/lwjgl34/jars/lwjgl-sdl-3.4.3.jar
+          git diff --exit-code -- app/src/main/cpp/cssdl3_stubs.c tools/natives34/sdl3_required.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives34-arm64-v8a
+          path: natives34-out/
+          if-no-files-found: error
+          retention-days: 7
+
   build:
-    needs: natives
+    needs: [ natives, natives34 ]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -102,7 +153,7 @@ jobs:
       - name: Collect native bundles
         uses: actions/download-artifact@v4
         with:
-          pattern: natives-*
+          pattern: natives*
           path: natives-dl
 
       # Java runtimes are bundled for arm64-v8a (nearly every phone). Other ABIs download the same builds
@@ -112,7 +163,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p app/src/main/assets
-          for d in natives-dl/natives-*; do cp -r "$d"/bundled app/src/main/assets/; done
+          for d in natives-dl/natives-*; do [ -d "$d/bundled" ] && cp -r "$d"/bundled app/src/main/assets/; done
+          tools/natives34/build.sh package natives-dl/natives34-arm64-v8a app/src/main/assets arm64-v8a
           tools/natives/build_natives.sh runtimes arm64-v8a app/src/main/assets
           find app/src/main/assets -maxdepth 4 -type f -printf '%10s  %p\n' | sort -k2
           for f in app/src/main/assets/bundled/*/index.json; do echo "== $f"; cat "$f"; done
@@ -141,6 +193,9 @@ jobs:
         run: |
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "assets/bundled/.*(index.json|\.zip|\.tar\.xz)" | tee /tmp/bundled.txt
           grep -q "assets/bundled/arm64-v8a/components/lwjgl3-android.zip" /tmp/bundled.txt
+          grep -q "assets/bundled/arm64-v8a/components/lwjgl34-android.zip" /tmp/bundled.txt
+          grep -q "assets/bundled/arm64-v8a/runtimes/jre25.tar.xz" /tmp/bundled.txt
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libcsglfw.so"
           grep -q "assets/bundled/arm64-v8a/components/mobileglues.zip" /tmp/bundled.txt
           grep -q "assets/bundled/arm64-v8a/runtimes/jre21.tar.xz" /tmp/bundled.txt
 

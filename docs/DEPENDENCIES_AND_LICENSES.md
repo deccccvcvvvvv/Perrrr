@@ -12,7 +12,8 @@
 | AndroidX core-ktx | 1.13.1 | Apache-2.0 | compat helpers, FileProvider |
 | AndroidX lifecycle (viewmodel-compose, runtime-compose) | 2.8.6 | Apache-2.0 | ViewModel, lifecycle-aware flows |
 | Transitive AndroidX (collection, annotation, savedstate, emoji2, profileinstaller, startup, tracing, …), Guava `listenablefuture`, JetBrains annotations | (resolved by Gradle) | Apache-2.0 | pulled in by the above |
-| `libcsglfw.so`, `libcsbridge.so` | this project | project licence | GLFW API on Android, in-process JVM bridge |
+| `libcsglfw.so`, `libcsbridge.so` | this project | project licence | GLFW 3.4 and SDL3 window/input APIs on Android (original implementations), in-process JVM bridge |
+| SDL3 public headers (`app/src/main/cpp/third_party/SDL3`) | 3.4.14 | zlib | compile-time only: exact SDL3 types/struct layouts for the launcher's own SDL3 implementation (no SDL code is compiled in) |
 
 | OpenJDK 8/17/21/25 for Android (AngelAuraMC builds) | rolling `download_jre*` tags, pinned by SHA-256 | GPLv2 + Classpath Exception | game Java runtime (arm64-v8a bundled) |
 | LWJGL | 3.3.3 (built from source) | BSD-3-Clause | game bindings |
@@ -21,10 +22,15 @@
 | OpenAL Soft | 1.23.1 | LGPL-2.0+ (shared library, replaceable) | game audio |
 | GL4ES | pinned commit | MIT | GL 2.1 → GLES renderer |
 | MobileGlues | pinned commit | LGPL-2.1 (shared library, replaceable) | GL 4.x → GLES 3 renderer |
+| LWJGL (26.x component, arm64-v8a) | 3.4.3 (natives built from source, jars from Maven Central, SHA-1 checked) | BSD-3-Clause | game bindings for Minecraft 26.x |
+| libffi (26.x component) | 3.8.0 | MIT | statically linked into the 3.4.3 `liblwjgl.so` |
+| FreeType (26.x component) | VER-2-14-3 | FTL (BSD-style) | `libfreetype.so` for lwjgl-freetype 3.4.3 |
+| shaderc + glslang + SPIRV-Tools + SPIRV-Headers | shaderc v2026.2 (dependencies at the revisions in its `DEPS`) | Apache-2.0; glslang BSD-3-Clause/MIT-style; SPIRV-Headers MIT | `libshaderc.so`: GLSL → SPIR-V for Minecraft 26.3's shader pipeline (also exports glslang's and SPIRV-Tools' C APIs, as upstream LWJGL does) |
+| SPIRV-Cross | vulkan-sdk-1.4.341.0 | Apache-2.0 | `libspirv-cross.so`: SPIR-V → GLSL for Minecraft 26.3 |
 | XZ for Java | 1.10 | 0BSD | `.tar.xz` runtime extraction |
 
 All Kotlin and C sources of the launcher itself were written for this project; no launcher code was copied from other launchers.
-The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` (GL4ES is only switched from
+The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` and `tools/natives34/build.sh` (GL4ES is only switched from
 a static to a shared library in its `Android.mk`). Source URLs and pinned versions are in that script and in each component's
 `cs-component.json` (`license`, `source`). LGPL/GPL obligations: the corresponding source is the pinned upstream revision;
 the libraries are separate shared objects that can be replaced.

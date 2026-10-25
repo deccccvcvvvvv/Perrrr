@@ -5,7 +5,7 @@
 /* Static methods on pro.cslauncher.app.game.NativeBridge, invoked from native threads (game thread, log reader). */
 static JavaVM *g_vm = NULL;
 static jclass g_cls = NULL;
-static jmethodID m_cursorMode, m_cursorPos, m_setClip, m_getClip, m_log, m_exit, m_ready;
+static jmethodID m_cursorMode, m_cursorPos, m_setClip, m_getClip, m_log, m_exit, m_ready, m_openUrl;
 
 void cs_host_set_vm(JavaVM *vm, jclass cls) {
     g_vm = vm;
@@ -18,6 +18,7 @@ void cs_host_set_vm(JavaVM *vm, jclass cls) {
     m_log        = (*env)->GetStaticMethodID(env, g_cls, "onLogLine", "(Ljava/lang/String;)V");
     m_exit       = (*env)->GetStaticMethodID(env, g_cls, "onJvmExit", "(I)V");
     m_ready      = (*env)->GetStaticMethodID(env, g_cls, "onWindowReady", "(II)V");
+    m_openUrl    = (*env)->GetStaticMethodID(env, g_cls, "onOpenUrl", "(Ljava/lang/String;)Z");
     if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionDescribe(env); (*env)->ExceptionClear(env); }
 }
 
@@ -59,4 +60,9 @@ void cs_host_log_line(const char *line) {
     int d; JNIEnv *e = attach(&d);
     if (e && m_log) { jstring js = (*e)->NewStringUTF(e, line); if (js) { (*e)->CallStaticVoidMethod(e, g_cls, m_log, js); (*e)->DeleteLocalRef(e, js); } }
     detach(e, d);
+}
+int cs_host_open_url(const char *url) {
+    int d; JNIEnv *e = attach(&d); int ok = 0;
+    if (e && m_openUrl && url) { jstring js = (*e)->NewStringUTF(e, url); if (js) { ok = (*e)->CallStaticBooleanMethod(e, g_cls, m_openUrl, js) == JNI_TRUE; (*e)->DeleteLocalRef(e, js); } }
+    detach(e, d); return ok;
 }

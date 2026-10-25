@@ -46,7 +46,17 @@ class ComponentManager(private val dirs: LauncherDirs) {
     /** All native libraries available from installed components, by file name. */
     fun availableLibraries(abi: String): Map<String, Path> = list().filter { it.manifest.abi == abi }.flatMap { it.libraries().entries }.associate { it.key to it.value }
 
-    fun lwjgl(abi: String): InstalledComponent? = list().firstOrNull { it.manifest.abi == abi && it.lwjglVersion != null }
+    /**
+     * The LWJGL component to run a game built against [gameLwjgl] (e.g. "3.3.3", "3.4.1"): the oldest installed build
+     * that is at least as new in major.minor (3.2/3.3 games -> 3.3.3, 26.x on 3.4 -> 3.4.3). Without a suitable one the
+     * newest is returned and [LwjglCompat] explains the mismatch.
+     */
+    fun lwjgl(abi: String, gameLwjgl: String? = null): InstalledComponent? {
+        val all = list().filter { it.manifest.abi == abi && it.lwjglVersion != null }.sortedBy { LwjglCompat.order(it.lwjglVersion!!) }
+        if (gameLwjgl == null) return all.firstOrNull()
+        val need = LwjglCompat.majorMinor(gameLwjgl)
+        return all.firstOrNull { LwjglCompat.majorMinor(it.lwjglVersion!!) >= need } ?: all.lastOrNull()
+    }
 
     fun verify(c: InstalledComponent): List<String> = c.manifest.files.mapNotNull { f ->
         val p = SafeZip.safeTarget(c.dir, f.path)
@@ -90,13 +100,27 @@ class ComponentManager(private val dirs: LauncherDirs) {
  * Returns a user-facing reason when it cannot (e.g. Minecraft 26.x moved to LWJGL 3.4 with SDL3 instead of GLFW).
  */
 object LwjglCompat {
+    /** First LWJGL release whose Android build in this launcher includes the SDL3 bridge (libcsglfw.so + SDL natives). */
+    const val SDL_BRIDGE_MIN = "3.4"
+
+    fun majorMinor(v: String): Int = v.split('.', '-').take(2).map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 0 } shl 16) + it.getOrElse(1) { 0 } }
+    /** Full numeric ordering key (major, minor, patch). */
+    fun order(v: String): Long = v.split('.', '-').take(3).map { it.toLongOrNull() ?: 0L }.let { (it.getOrElse(0) { 0L } shl 32) + (it.getOrElse(1) { 0L } shl 16) + it.getOrElse(2) { 0L } }
+
+    /** The game's LWJGL version from its library list (null for LWJGL 2 / unknown). */
+    fun gameVersion(gameLibraries: List<pro.cslauncher.core.meta.MavenCoordinate>): String? =
+        gameLibraries.firstOrNull { it.group == "org.lwjgl" && it.artifact == "lwjgl" }?.version
+
+    /** Minecraft 26.3+ creates its window with SDL3 instead of GLFW. */
+    fun usesSdl(gameLibraries: List<pro.cslauncher.core.meta.MavenCoordinate>): Boolean =
+        gameLibraries.any { it.group == "org.lwjgl" && it.artifact == "lwjgl-sdl" }
+
     fun problem(gameLibraries: List<pro.cslauncher.core.meta.MavenCoordinate>, componentVersion: String?): String? {
         val lw = gameLibraries.filter { it.group == "org.lwjgl" }
         if (lw.isEmpty() || componentVersion == null) return null
-        if (lw.any { it.artifact == "lwjgl-sdl" })
-            return "This Minecraft version uses LWJGL ${lw.first { it.artifact == "lwjgl-sdl" }.version} with SDL3 windowing, which the bundled Android bridge (GLFW, LWJGL $componentVersion) does not support yet. Use Minecraft 1.21.10 or older."
-        val game = lw.firstOrNull { it.artifact == "lwjgl" }?.version ?: return null
-        fun mm(v: String) = v.split('.', '-').take(2).map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 0 } shl 16) + it.getOrElse(1) { 0 } }
-        return if (mm(game) > mm(componentVersion)) "This Minecraft version needs LWJGL $game; the bundled Android LWJGL is $componentVersion." else null
+        if (usesSdl(lw) && majorMinor(componentVersion) < majorMinor(SDL_BRIDGE_MIN))
+            return "This Minecraft version uses LWJGL ${lw.first { it.artifact == "lwjgl-sdl" }.version} with SDL3 windowing. The LWJGL 3.4 Android build is not available for this device's CPU (bundled: LWJGL $componentVersion); use Minecraft 1.21.11 or older."
+        val game = gameVersion(lw) ?: return null
+        return if (majorMinor(game) > majorMinor(componentVersion)) "This Minecraft version needs LWJGL $game; the bundled Android LWJGL for this device's CPU is $componentVersion." else null
     }
 }

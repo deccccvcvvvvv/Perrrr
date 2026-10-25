@@ -27,3 +27,4 @@ char *cs_host_get_clipboard(void);   /* malloc'ed, caller frees; NULL if empty *
 CS_EXPORT void cs_host_log_line(const char *line);   /* used by libcsbridge */
 CS_EXPORT void cs_host_jvm_exit(int code);           /* used by libcsbridge */
 void cs_host_window_ready(int w, int h);
+int cs_host_open_url(const char *utf8);   /* 1 if the system accepted the link */

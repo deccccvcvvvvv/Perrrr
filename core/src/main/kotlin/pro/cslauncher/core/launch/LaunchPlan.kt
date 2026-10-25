@@ -3,6 +3,7 @@ package pro.cslauncher.core.launch
 import kotlinx.serialization.Serializable
 import pro.cslauncher.core.account.LaunchSession
 import pro.cslauncher.core.component.InstalledComponent
+import pro.cslauncher.core.component.LwjglCompat
 import pro.cslauncher.core.install.*
 import pro.cslauncher.core.meta.LaunchFeatures
 import pro.cslauncher.core.platform.PlatformInfo
@@ -132,9 +133,21 @@ class LaunchPlanner(private val dirs: LauncherDirs, private val platform: Platfo
         if (jvm.none { it.startsWith("-Dfile.encoding") }) jvm += "-Dfile.encoding=UTF-8"
         if (platform.isAndroid) {
             jvm += "-Dorg.lwjgl.librarypath=${nativesDir.toAbsolutePath()}"
-            input.glfwShim?.let { jvm += "-Dorg.lwjgl.glfw.libname=${it.toAbsolutePath()}" } ?: throw LaunchPlanException("GLFW integration library missing from the APK")
+            val shim = input.glfwShim ?: throw LaunchPlanException("GLFW integration library missing from the APK")
+            jvm += "-Dorg.lwjgl.glfw.libname=${shim.toAbsolutePath()}"
             jvm += "-Dorg.lwjgl.util.NoChecks=true"
             jvm += "-Djava.awt.headless=true"
+            val lw = input.lwjglComponent?.lwjglVersion
+            if (lw != null && LwjglCompat.majorMinor(lw) >= LwjglCompat.majorMinor(LwjglCompat.SDL_BRIDGE_MIN)) {
+                // LWJGL 3.4 (Minecraft 26.x). SDL3 calls go to the launcher's bridge inside libcsglfw.so; the shader
+                // toolchain the 26.3 OpenGL backend uses (GLSL -> shaderc -> SPIR-V -> SPIRV-Cross -> GLSL) comes from
+                // the component. Vulkan is not offered (the bridge renders through EGL): pointing LWJGL at a library
+                // that does not exist makes VK.create() fail, which Minecraft handles by staying on OpenGL.
+                jvm += "-Dorg.lwjgl.sdl.libname=${shim.toAbsolutePath()}"
+                jvm += "-Dorg.lwjgl.shaderc.libname=${nativesDir.resolve("libshaderc.so").toAbsolutePath()}"
+                jvm += "-Dorg.lwjgl.spvc.libname=${nativesDir.resolve("libspirv-cross.so").toAbsolutePath()}"
+                jvm += "-Dorg.lwjgl.vulkan.libname=${nativesDir.resolve("vulkan-not-available.so").toAbsolutePath()}"
+            }
         }
         input.renderer.jvmProps.forEach { (k, v) -> jvm += "-D$k=$v" }
         val userJvm = JvmArgs.tokenize(p.jvmArgs)

@@ -48,10 +48,10 @@ class ProvisioningTest {
         "./lib/libjava.so" to "x".toByteArray(),
     )))
 
-    private fun componentZip(id: String, version: String): ByteArray {
+    private fun componentZip(id: String, version: String, lwjgl: String = "3.3.3"): ByteArray {
         val lib = "fake native".toByteArray()
         val manifest = """{"formatVersion":1,"id":"$id","name":"$id","version":"$version","kind":"lwjgl","abi":"arm64-v8a","license":"BSD","source":"test",
-            "provides":["lwjgl:3.3.3"],"classpathJars":[],"libraryDir":"lib","files":[{"path":"lib/liblwjgl.so","sha256":"${Hashing.sha256(lib)}","size":${lib.size}}]}"""
+            "provides":["lwjgl:$lwjgl"],"classpathJars":[],"libraryDir":"lib","files":[{"path":"lib/liblwjgl.so","sha256":"${Hashing.sha256(lib)}","size":${lib.size}}]}"""
         return ByteArrayOutputStream().also { o -> ZipOutputStream(o).use { z ->
             z.putNextEntry(ZipEntry("cs-component.json")); z.write(manifest.toByteArray()); z.closeEntry()
             z.putNextEntry(ZipEntry("lib/liblwjgl.so")); z.write(lib); z.closeEntry()
@@ -117,6 +117,40 @@ class ProvisioningTest {
         assertEquals("3.3.3-r2", cm.lwjgl("arm64-v8a")!!.manifest.version)
     }
 
+    @Test fun lwjglComponentFollowsTheGamesLwjgl() {
+        val dirs = LauncherDirs(tempDir()); dirs.createBase()
+        val cm = ComponentManager(dirs)
+        val z33 = componentZip("lwjgl3-android", "3.3.3-r1", "3.3.3"); val z34 = componentZip("lwjgl34-android", "3.4.3-r1", "3.4.3")
+        val b = MapBundle(BundleIndex(abi = "arm64-v8a", components = listOf(
+            BundledComponent("lwjgl3-android", "3.3.3-r1", "components/a.zip", Hashing.sha256(z33), z33.size.toLong()),
+            BundledComponent("lwjgl34-android", "3.4.3-r1", "components/b.zip", Hashing.sha256(z34), z34.size.toLong()))),
+            mapOf("components/a.zip" to z33, "components/b.zip" to z34))
+        AutoProvisioner(dirs, android, RuntimeManager(dirs, android), cm, b, null, null).ensureComponents {}
+        assertEquals(2, cm.list().size)                                        // both kept side by side
+        assertEquals("lwjgl3-android", cm.lwjgl("arm64-v8a", "3.2.2")!!.manifest.id)    // 1.16
+        assertEquals("lwjgl3-android", cm.lwjgl("arm64-v8a", "3.3.1")!!.manifest.id)    // 1.20.1
+        assertEquals("lwjgl3-android", cm.lwjgl("arm64-v8a", "3.3.3")!!.manifest.id)    // 1.21.x
+        assertEquals("lwjgl34-android", cm.lwjgl("arm64-v8a", "3.4.1")!!.manifest.id)   // 26.1 / 26.2 (GLFW)
+        assertEquals("lwjgl34-android", cm.lwjgl("arm64-v8a", "3.4.3")!!.manifest.id)   // 26.3 (SDL3)
+        assertEquals("lwjgl34-android", cm.lwjgl("arm64-v8a", "3.5.0")!!.manifest.id)   // newest; LwjglCompat explains
+        assertEquals("lwjgl3-android", cm.lwjgl("arm64-v8a")!!.manifest.id)
+        assertNull(cm.lwjgl("x86_64", "3.3.3"))
+    }
+
+    @Test fun sdlGamesUseMobileGluesNotZink() {
+        val dir = tempDir(); fun lib(n: String): Path = Files.write(dir.resolve(n), byteArrayOf(1))
+        val libs = mapOf("libmobileglues.so" to lib("libmobileglues.so"), "libgl4es.so" to lib("libgl4es.so"), "libOSMesa.so" to lib("libOSMesa.so"))
+        val reg = RendererRegistry()
+        val env = RendererEnvironment(android, 34, 32, "1.3.0", libs, "26.3", true, true, gameUsesSdl = true)
+        val st = reg.statuses(env)
+        assertEquals(RendererState.GAME_UNSUPPORTED, st.getValue("zink").state); assertTrue("MobileGlues" in st.getValue("zink").reason)
+        assertEquals(RendererState.GAME_UNSUPPORTED, st.getValue("gl4es").state)
+        assertEquals("mobileglues", reg.decide(env, "auto", emptyMap(), null, emptySet()).backend?.id)
+        assertNull(reg.decide(env, "zink", emptyMap(), null, emptySet()).backend)          // explicit choice refused with a reason
+        // GLFW-based 26.1/26.2 keep Zink available
+        assertEquals(RendererState.AVAILABLE, reg.statuses(env.copy(gameVersionId = "26.1", gameUsesSdl = false)).getValue("zink").state)
+    }
+
     @Test fun androidRuntimeEnvironment() {
         val e = AndroidRuntimeEnv.build("/data/rt/jre21/lib/server/libjvm.so", 21, listOf("/data/comp/lwjgl/lib"), mapOf("gl" to "/data/comp/mg/lib/libmobileglues.so"),
             "/s/tmp", "/g", "/s/resolv.conf", "Asia/Kolkata", "14", listOf("-Xmx2g"))
@@ -161,5 +195,11 @@ class ProvisioningTest {
         assertNull(pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.2.2")), "3.3.3"))
         assertTrue("SDL3" in pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.4.3"), c("lwjgl-sdl", "3.4.3")), "3.3.3")!!)
         assertNotNull(pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.4.0")), "3.3.3"))
+        // with the LWJGL 3.4 Android build: 26.1/26.2 (GLFW) and 26.3 (SDL3) are accepted
+        assertNull(pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.4.1"), c("lwjgl-glfw", "3.4.1")), "3.4.3"))
+        assertNull(pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.4.3"), c("lwjgl-sdl", "3.4.3")), "3.4.3"))
+        assertNotNull(pro.cslauncher.core.component.LwjglCompat.problem(listOf(c("lwjgl", "3.5.0"), c("lwjgl-sdl", "3.5.0")), "3.4.3"))
+        assertTrue(pro.cslauncher.core.component.LwjglCompat.usesSdl(listOf(c("lwjgl-sdl", "3.4.3"))))
+        assertEquals("3.4.3", pro.cslauncher.core.component.LwjglCompat.gameVersion(listOf(c("lwjgl-sdl", "3.4.3"), c("lwjgl", "3.4.3"))))
     }
 }

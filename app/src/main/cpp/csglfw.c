@@ -10,6 +10,7 @@
  *   CS_GL_LIB / CS_EGL_LIB / CS_OSMESA_LIB -> absolute paths of the libraries used for symbol lookup
  */
 #include "cs_common.h"
+#include "cs_egl.h"
 #include <EGL/egl.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
@@ -115,32 +116,32 @@ static int g_monitorToken = 1; static void *g_monitorUser = NULL;
 static char g_versionString[] = "3.4.0 CS-Android EGL OSMesa";
 
 /* Android window handed over by the activity; guarded by g_winMu. */
-static pthread_mutex_t g_winMu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t g_winCv = PTHREAD_COND_INITIALIZER;
-static ANativeWindow *g_nativeWindow = NULL;
-static int g_surfaceGeneration = 0, g_surfaceAckGeneration = 0;
-static int g_surfaceW = 1280, g_surfaceH = 720, g_renderW = 0, g_renderH = 0;
+pthread_mutex_t g_winMu = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t g_winCv = PTHREAD_COND_INITIALIZER;
+ANativeWindow *g_nativeWindow = NULL;
+int g_surfaceGeneration = 0, g_surfaceAckGeneration = 0;
+int g_surfaceW = 1280, g_surfaceH = 720, g_renderW = 0, g_renderH = 0;
 
 /* Rendering backend */
-enum { CTX_EGL_GLES2, CTX_EGL_GLES3, CTX_OSMESA, CTX_EGL_DESKTOP };
-static int g_ctxKind = CTX_EGL_GLES2;
-static void *g_glLib = NULL, *g_eglLib = NULL, *g_osmesaLib = NULL;
-static EGLDisplay g_dpy = EGL_NO_DISPLAY; static EGLConfig g_cfg = NULL;
+int g_ctxKind = CTX_EGL_GLES2;
+void *g_glLib = NULL, *g_eglLib = NULL;
+static void *g_osmesaLib = NULL;
+EGLDisplay g_dpy = EGL_NO_DISPLAY; EGLConfig g_cfg = NULL;
 /* EGL entry points (resolved from the selected EGL library, e.g. ANGLE, or the system libEGL). */
-static EGLDisplay (*p_eglGetDisplay)(EGLNativeDisplayType);
-static EGLBoolean (*p_eglInitialize)(EGLDisplay, EGLint *, EGLint *);
-static EGLBoolean (*p_eglChooseConfig)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
-static EGLBoolean (*p_eglGetConfigAttrib)(EGLDisplay, EGLConfig, EGLint, EGLint *);
-static EGLSurface (*p_eglCreateWindowSurface)(EGLDisplay, EGLConfig, EGLNativeWindowType, const EGLint *);
-static EGLContext (*p_eglCreateContext)(EGLDisplay, EGLConfig, EGLContext, const EGLint *);
-static EGLBoolean (*p_eglMakeCurrent)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
-static EGLBoolean (*p_eglSwapBuffers)(EGLDisplay, EGLSurface);
-static EGLBoolean (*p_eglSwapInterval)(EGLDisplay, EGLint);
-static EGLBoolean (*p_eglDestroySurface)(EGLDisplay, EGLSurface);
-static EGLBoolean (*p_eglDestroyContext)(EGLDisplay, EGLContext);
-static EGLBoolean (*p_eglBindAPI)(EGLenum);
-static EGLint (*p_eglGetError)(void);
-static void *(*p_eglGetProcAddress)(const char *);
+EGLDisplay (*p_eglGetDisplay)(EGLNativeDisplayType);
+EGLBoolean (*p_eglInitialize)(EGLDisplay, EGLint *, EGLint *);
+EGLBoolean (*p_eglChooseConfig)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
+EGLBoolean (*p_eglGetConfigAttrib)(EGLDisplay, EGLConfig, EGLint, EGLint *);
+EGLSurface (*p_eglCreateWindowSurface)(EGLDisplay, EGLConfig, EGLNativeWindowType, const EGLint *);
+EGLContext (*p_eglCreateContext)(EGLDisplay, EGLConfig, EGLContext, const EGLint *);
+EGLBoolean (*p_eglMakeCurrent)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
+EGLBoolean (*p_eglSwapBuffers)(EGLDisplay, EGLSurface);
+EGLBoolean (*p_eglSwapInterval)(EGLDisplay, EGLint);
+EGLBoolean (*p_eglDestroySurface)(EGLDisplay, EGLSurface);
+EGLBoolean (*p_eglDestroyContext)(EGLDisplay, EGLContext);
+EGLBoolean (*p_eglBindAPI)(EGLenum);
+EGLint (*p_eglGetError)(void);
+void * (*p_eglGetProcAddress)(const char *);
 /* OSMesa */
 typedef void *OSMesaContext;
 static OSMesaContext (*p_OSMesaCreateContextExt)(unsigned int, int, int, int, OSMesaContext);
@@ -200,7 +201,7 @@ CS_EXPORT JNIEXPORT jboolean JNICALL Java_pro_cslauncher_app_game_NativeBridge_r
     struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += timeoutMs / 1000; ts.tv_nsec += (timeoutMs % 1000) * 1000000L; if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
     int ok = 1;
-    while (g_window && (g_window->surface != EGL_NO_SURFACE) && g_surfaceAckGeneration < gen) {
+    while (((g_window && g_window->surface != EGL_NO_SURFACE) || cs_sdl_holds_surface()) && g_surfaceAckGeneration < gen) {
         if (pthread_cond_timedwait(&g_winCv, &g_winMu, &ts) != 0) { ok = 0; break; }
     }
     pthread_mutex_unlock(&g_winMu);
@@ -224,6 +225,10 @@ static void *open_lib(const char *envName, const char *fallback) {
     if (!h && fallback) h = dlopen(fallback, RTLD_NOW | RTLD_GLOBAL);
     return h;
 }
+
+static int load_backend(void);
+static int g_backendLoaded = 0;
+int cs_load_backend(void) { if (!g_backendLoaded) g_backendLoaded = load_backend(); return g_backendLoaded; }
 
 static int load_backend(void) {
     const char *k = getenv("CS_CONTEXT");
@@ -269,7 +274,7 @@ static int load_backend(void) {
 }
 
 /* Waits until the activity provides a window (game started while paused, or surface being recreated). */
-static ANativeWindow *wait_window(void) {
+ANativeWindow *cs_wait_window(void) {
     pthread_mutex_lock(&g_winMu);
     while (!g_nativeWindow) pthread_cond_wait(&g_winCv, &g_winMu);
     ANativeWindow *w = g_nativeWindow; ANativeWindow_acquire(w);
@@ -278,7 +283,7 @@ static ANativeWindow *wait_window(void) {
 }
 
 static int create_surface(CSWindow *win) {
-    ANativeWindow *nw = wait_window();
+    ANativeWindow *nw = cs_wait_window();
     int gen; pthread_mutex_lock(&g_winMu); gen = g_surfaceGeneration; int rw = g_renderW, rh = g_renderH; pthread_mutex_unlock(&g_winMu);
     if (g_ctxKind == CTX_OSMESA) {
         ANativeWindow_setBuffersGeometry(nw, rw, rh, WINDOW_FORMAT_RGBA_8888);
@@ -363,7 +368,7 @@ static void handle_surface_change(CSWindow *win) {
 /* ----------------------------------------------------------------- init / version / errors */
 CS_EXPORT int glfwInit(void) {
     if (g_initialized) return GLFW_TRUE;
-    if (!load_backend()) return GLFW_FALSE;
+    if (!cs_load_backend()) return GLFW_FALSE;
     g_timeOffset = now_s(); g_initialized = 1;
     return GLFW_TRUE;
 }
@@ -487,6 +492,24 @@ SETCB(glfwSetCursorEnterCallback, GLFWcursorenterfun, cursorEnterCb)
 SETCB(glfwSetScrollCallback, GLFWscrollfun, scrollCb)
 SETCB(glfwSetDropCallback, GLFWdropfun, dropCb)
 #undef SETCB
+
+/* IME / preedit API (GLFW's IME extension; LWJGL 3.4 binds it and Minecraft 26.1+ calls it). Text entry on Android
+ * arrives as committed characters from the launcher's keyboard, so there is never preedit text: callbacks are stored,
+ * the cursor rectangle round-trips, and no candidates exist. */
+typedef void (*GLFWpreeditfun)(void *, int, unsigned int *, int, int *, int, int);
+typedef void (*GLFWimestatusfun)(void *);
+typedef void (*GLFWpreeditcandidatefun)(void *, int, int, int, int);
+static GLFWpreeditfun g_preeditCb; static GLFWimestatusfun g_imeStatusCb; static GLFWpreeditcandidatefun g_preeditCandCb;
+static int g_preeditRect[4];
+CS_EXPORT GLFWpreeditfun glfwSetPreeditCallback(void *w, GLFWpreeditfun cb) { GLFWpreeditfun o = g_preeditCb; g_preeditCb = cb; return o; }
+CS_EXPORT GLFWimestatusfun glfwSetIMEStatusCallback(void *w, GLFWimestatusfun cb) { GLFWimestatusfun o = g_imeStatusCb; g_imeStatusCb = cb; return o; }
+CS_EXPORT GLFWpreeditcandidatefun glfwSetPreeditCandidateCallback(void *w, GLFWpreeditcandidatefun cb) { GLFWpreeditcandidatefun o = g_preeditCandCb; g_preeditCandCb = cb; return o; }
+CS_EXPORT void glfwGetPreeditCursorRectangle(void *w, int *x, int *y, int *wd, int *ht) {
+    if (x) *x = g_preeditRect[0]; if (y) *y = g_preeditRect[1]; if (wd) *wd = g_preeditRect[2]; if (ht) *ht = g_preeditRect[3];
+}
+CS_EXPORT void glfwSetPreeditCursorRectangle(void *w, int x, int y, int wd, int ht) { g_preeditRect[0] = x; g_preeditRect[1] = y; g_preeditRect[2] = wd; g_preeditRect[3] = ht; }
+CS_EXPORT void glfwResetPreeditText(void *w) {}
+CS_EXPORT unsigned int *glfwGetPreeditCandidate(void *w, int index, int *textCount) { if (textCount) *textCount = 0; return NULL; }
 
 /* ----------------------------------------------------------------- events */
 static void dispatch(CSWindow *w, const cs_event *e) {

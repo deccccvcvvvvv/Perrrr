@@ -41,6 +41,7 @@ class AndroidDevice(private val ctx: Context) {
         platform = Services.platform, androidApi = Build.VERSION.SDK_INT, glesVersion = glesVersion, vulkanApi = vulkanApi,
         libraries = Services.components.availableLibraries(Services.abi), gameVersionId = rv.meta.id,
         gameUsesLwjgl3 = rv.meta.usesLwjgl3, gameNeedsGl32Core = needsGl32Core(rv),
+        gameUsesSdl = pro.cslauncher.core.component.LwjglCompat.usesSdl(rv.libraries.map { it.library.coordinate }),
     )
 
     /** Minecraft 1.17 (21w10a) moved to the OpenGL 3.2 core profile; it is also the first version requiring Java 16+. */

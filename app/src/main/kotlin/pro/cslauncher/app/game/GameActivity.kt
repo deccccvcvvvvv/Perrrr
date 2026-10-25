@@ -216,6 +216,13 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
         main.post(task)
         return runCatching { task.get(500, TimeUnit.MILLISECONDS) }.getOrNull()
     }
+    /** Links the game opens (e.g. from chat or the menu). Only web links are passed on to the system browser. */
+    override fun onOpenUrl(url: String): Boolean {
+        val uri = runCatching { android.net.Uri.parse(url) }.getOrNull() ?: return false
+        if (uri.scheme?.lowercase() !in setOf("http", "https")) return false
+        main.post { runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+        return true
+    }
 
     // ---------------------------------------------------------------- commands from controls
     private fun onCommand(a: InputAction) {

@@ -15,6 +15,7 @@ data class RendererEnvironment(
     val gameVersionId: String,
     val gameUsesLwjgl3: Boolean,
     val gameNeedsGl32Core: Boolean,             // Minecraft 1.17+ requires OpenGL 3.2 core profile
+    val gameUsesSdl: Boolean = false,           // Minecraft 26.3+: SDL3 window, rendered through the EGL bridge only
 )
 
 enum class RendererState { AVAILABLE, MISSING_COMPONENT, DEVICE_UNSUPPORTED, GAME_UNSUPPORTED, NOT_APPLICABLE }
@@ -150,6 +151,7 @@ class ZinkBackend : RendererBackend {
     override fun status(env: RendererEnvironment): RendererStatus = when {
         !env.platform.isAndroid -> RendererStatus(RendererState.NOT_APPLICABLE, "Android only")
         !env.gameUsesLwjgl3 -> RendererStatus(RendererState.GAME_UNSUPPORTED, "LWJGL 2 versions are not supported")
+        env.gameUsesSdl -> RendererStatus(RendererState.GAME_UNSUPPORTED, "Minecraft ${env.gameVersionId} uses SDL3 windowing, which the launcher renders through EGL; Zink (OSMesa) is not supported there yet. Use MobileGlues.")
         env.vulkanApi == null -> RendererStatus(RendererState.DEVICE_UNSUPPORTED, "Requires Vulkan 1.1+, which this device does not report")
         !vk11(env.vulkanApi) -> RendererStatus(RendererState.DEVICE_UNSUPPORTED, "Requires Vulkan 1.1+, device reports ${env.vulkanApi}")
         missingLibs(env).isNotEmpty() -> RendererStatus(RendererState.MISSING_COMPONENT, "Install a Mesa Zink component pack", missingLibs(env))
