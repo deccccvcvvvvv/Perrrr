@@ -17,7 +17,8 @@ import kotlin.test.*
 class RealBundleTest {
     @Test fun provisionsFromRealBundle() {
         val root = System.getProperty("cs.bundleDir").orEmpty()
-        assumeTrue("set -PbundleDir to run", root.isNotBlank() && File(root, "bundled/arm64-v8a/index.json").isFile)
+        assumeTrue("set -PbundleDir to run", root.isNotBlank())
+        assertTrue(File(root, "bundled/arm64-v8a/index.json").isFile, "no bundle at $root (pass an absolute path)")
         val source = object : BundleSource {
             override fun index(abi: String) = File(root, "bundled/$abi/index.json").takeIf { it.isFile }?.let { AutoProvisioner.parseIndex(it.readText()) }
             override fun open(abi: String, file: String): InputStream = File(root, "bundled/$abi/$file").inputStream()
