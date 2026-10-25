@@ -189,6 +189,9 @@ jobs:
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m"
 
+      - name: Native dependency check (every DT_NEEDED of APK libs, runtimes and components resolves)
+        run: python3 tools/check_bundle_needed.py app/build/outputs/apk/debug/app-debug.apk app/src/main/assets
+
       - name: Verify bundled natives inside the APK
         run: |
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "assets/bundled/.*(index.json|\.zip|\.tar\.xz)" | tee /tmp/bundled.txt
@@ -196,6 +199,7 @@ jobs:
           grep -q "assets/bundled/arm64-v8a/components/lwjgl34-android.zip" /tmp/bundled.txt
           grep -q "assets/bundled/arm64-v8a/runtimes/jre25.tar.xz" /tmp/bundled.txt
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libcsglfw.so"
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libc++_shared.so"
           grep -q "assets/bundled/arm64-v8a/components/mobileglues.zip" /tmp/bundled.txt
           grep -q "assets/bundled/arm64-v8a/runtimes/jre21.tar.xz" /tmp/bundled.txt
 

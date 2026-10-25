@@ -28,6 +28,7 @@
 | shaderc + glslang + SPIRV-Tools + SPIRV-Headers | shaderc v2026.2 (dependencies at the revisions in its `DEPS`) | Apache-2.0; glslang BSD-3-Clause/MIT-style; SPIRV-Headers MIT | `libshaderc.so`: GLSL → SPIR-V for Minecraft 26.3's shader pipeline (also exports glslang's and SPIRV-Tools' C APIs, as upstream LWJGL does) |
 | SPIRV-Cross | vulkan-sdk-1.4.341.0 | Apache-2.0 | `libspirv-cross.so`: SPIR-V → GLSL for Minecraft 26.3 |
 | XZ for Java | 1.10 | 0BSD | `.tar.xz` runtime extraction |
+| LLVM libc++ (`libc++_shared.so`, arm64-v8a) | Android NDK r27d (27.3.13750724), unmodified | Apache-2.0 WITH LLVM-exception | C++ runtime required by the Java 25 runtime (built with NDK r27d); see `app/src/main/jniLibs/README.md` |
 
 All Kotlin and C sources of the launcher itself were written for this project; no launcher code was copied from other launchers.
 The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` and `tools/natives34/build.sh` (GL4ES is only switched from
@@ -50,7 +51,8 @@ the libraries are separate shared objects that can be replaced.
 |---|---|---|
 | Minecraft client JAR, libraries, assets | Mojang (`piston-meta`, `piston-data`, `libraries.minecraft.net`, `resources.download.minecraft.net`) | Minecraft EULA. Users must own Minecraft Java Edition for online play |
 | Fabric / Quilt loader metadata & libraries | `meta.fabricmc.net`, `meta.quiltmc.org`, their Maven repos | Apache-2.0 |
-| Mods, resource packs, shaders | Modrinth API (no key), CurseForge API (user-supplied key) | per-project licences, shown on the project page |
+| Mods, modpacks, resource packs, shaders | Modrinth API (no key), CurseForge API (user-supplied key) | per-project licences, shown on the project page |
+| OptiFine | The user downloads the official jar from `optifine.net` themselves (in-app browser on the official page, or file import). The launcher patches it locally with its own GDIFF implementation and never redistributes or mirrors OptiFine | OptiFine terms (no redistribution) |
 
 ## Optional user-imported native payloads (see `COMPATIBILITY.md`)
 
