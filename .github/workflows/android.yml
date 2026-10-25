@@ -124,6 +124,9 @@ jobs:
       - name: Core unit tests
         run: ./gradlew :core:test --console=plain -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m"
 
+      - name: Provision from the real bundle (runtimes + components, as the app does on first start)
+        run: ./gradlew :core:test --tests '*RealBundleTest*' -PbundleDir=app/src/main/assets --console=plain -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m"
+
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --console=plain -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m"
 
