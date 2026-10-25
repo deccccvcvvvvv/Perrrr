@@ -14,18 +14,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # The ubuntu runner ships an Android SDK; only the pinned packages are added.
       - name: Install SDK packages (platform 34, build-tools 34, NDK r26d, CMake 3.22.1)
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          echo "Using $SDKM (ANDROID_HOME=$ANDROID_HOME)"
+          (yes | "$SDKM" --licenses > /dev/null) || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
