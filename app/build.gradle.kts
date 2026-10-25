@@ -20,6 +20,17 @@ android {
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=none") } }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    signingConfigs {
+        // Shared *debug* key (standard public debug credentials, not a secret) so that every
+        // debug APK - local or CI - has the same signature and installs as an update instead of
+        // failing with "App not installed". Release signing is configured separately by the publisher.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
