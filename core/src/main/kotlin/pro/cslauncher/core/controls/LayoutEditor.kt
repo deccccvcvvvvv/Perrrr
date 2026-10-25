@@ -3,7 +3,7 @@ package pro.cslauncher.core.controls
 /** Undo/redo editing model for the control editor. Consecutive drags of one control coalesce into one step. */
 class LayoutEditor(initial: ControlLayout, private val maxHistory: Int = 100) {
     var current: ControlLayout = initial; private set
-    private val saved = initial
+    private var saved = initial
     private val undo = ArrayDeque<ControlLayout>()
     private val redo = ArrayDeque<ControlLayout>()
     private var lastCoalesceKey: String? = null
@@ -18,6 +18,8 @@ class LayoutEditor(initial: ControlLayout, private val maxHistory: Int = 100) {
         redo.clear(); current = next; lastCoalesceKey = coalesceKey
     }
     fun endGesture() { lastCoalesceKey = null }
+    /** Call after the current layout was persisted; [dirty] becomes false until the next change. */
+    fun markSaved() { saved = current }
     fun undo() { if (undo.isEmpty()) return; redo.addLast(current); current = undo.removeLast(); lastCoalesceKey = null }
     fun redo() { if (redo.isEmpty()) return; undo.addLast(current); current = redo.removeLast(); lastCoalesceKey = null }
 
@@ -50,5 +52,15 @@ class LayoutEditor(initial: ControlLayout, private val maxHistory: Int = 100) {
         val ids = l.modes[mode].orEmpty().map { it.id }.toSet()
         if (base !in ids) return base
         var i = 2; while ("$base-$i" in ids) i++; return "$base-$i"
+    }
+}
+
+/** Layout ids derived from user-visible names (file-name safe, unique). */
+object LayoutIds {
+    fun fromName(name: String, taken: Set<String>): String {
+        val base = name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').take(32).ifBlank { "layout" }
+        var id = base; var n = 2
+        while (id in taken) id = "$base-${n++}"
+        return id
     }
 }

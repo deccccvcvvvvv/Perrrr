@@ -122,7 +122,7 @@ static int g_surfaceGeneration = 0, g_surfaceAckGeneration = 0;
 static int g_surfaceW = 1280, g_surfaceH = 720, g_renderW = 0, g_renderH = 0;
 
 /* Rendering backend */
-enum { CTX_EGL_GLES2, CTX_EGL_GLES3, CTX_OSMESA };
+enum { CTX_EGL_GLES2, CTX_EGL_GLES3, CTX_OSMESA, CTX_EGL_DESKTOP };
 static int g_ctxKind = CTX_EGL_GLES2;
 static void *g_glLib = NULL, *g_eglLib = NULL, *g_osmesaLib = NULL;
 static EGLDisplay g_dpy = EGL_NO_DISPLAY; static EGLConfig g_cfg = NULL;
@@ -227,7 +227,8 @@ static void *open_lib(const char *envName, const char *fallback) {
 
 static int load_backend(void) {
     const char *k = getenv("CS_CONTEXT");
-    g_ctxKind = (k && strcmp(k, "EGL_GLES3") == 0) ? CTX_EGL_GLES3 : (k && strcmp(k, "OSMESA") == 0) ? CTX_OSMESA : CTX_EGL_GLES2;
+    g_ctxKind = (k && strcmp(k, "EGL_GLES3") == 0) ? CTX_EGL_GLES3 : (k && strcmp(k, "OSMESA") == 0) ? CTX_OSMESA
+              : (k && strcmp(k, "EGL_DESKTOP") == 0) ? CTX_EGL_DESKTOP : CTX_EGL_GLES2;
     g_glLib = open_lib("CS_GL_LIB", NULL);
     if (g_ctxKind == CTX_OSMESA) {
         g_osmesaLib = open_lib("CS_OSMESA_LIB", "libOSMesa.so");
@@ -253,8 +254,9 @@ static int load_backend(void) {
     g_dpy = p_eglGetDisplay(EGL_DEFAULT_DISPLAY);
     EGLint maj, min;
     if (g_dpy == EGL_NO_DISPLAY || !p_eglInitialize(g_dpy, &maj, &min)) { glfw_error(GLFW_PLATFORM_ERROR, "eglInitialize failed"); return 0; }
-    p_eglBindAPI(EGL_OPENGL_ES_API);
-    EGLint renderable = g_ctxKind == CTX_EGL_GLES3 ? 0x40 /* EGL_OPENGL_ES3_BIT */ : EGL_OPENGL_ES2_BIT;
+    /* EGL_DESKTOP: the EGL library is a desktop-GL front end over GLES (MobileGlues) that accepts EGL_OPENGL_API. */
+    p_eglBindAPI(g_ctxKind == CTX_EGL_DESKTOP ? EGL_OPENGL_API : EGL_OPENGL_ES_API);
+    EGLint renderable = g_ctxKind == CTX_EGL_DESKTOP ? EGL_OPENGL_BIT : g_ctxKind == CTX_EGL_GLES3 ? 0x40 /* EGL_OPENGL_ES3_BIT */ : EGL_OPENGL_ES2_BIT;
     const EGLint attrs[] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, renderable, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8,
                              EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_STENCIL_SIZE, 8, EGL_NONE };
     EGLint n = 0;
@@ -322,8 +324,20 @@ static int make_current_internal(CSWindow *win) {
         return 1;
     }
     if (win->context == EGL_NO_CONTEXT) {
-        const EGLint ca[] = { EGL_CONTEXT_CLIENT_VERSION, g_ctxKind == CTX_EGL_GLES3 ? 3 : 2, EGL_NONE };
-        win->context = p_eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, ca);
+        if (g_ctxKind == CTX_EGL_DESKTOP) {
+            /* Honour the game's GLFW hints (Minecraft 1.17+ asks for 3.2 core); older versions ask for 2.1 compatibility. */
+            int maj = g_hintMajor > 0 ? g_hintMajor : 3, min = g_hintMajor > 0 ? g_hintMinor : 2;
+            const EGLint ca[] = { 0x3098 /* EGL_CONTEXT_MAJOR_VERSION */, maj, 0x30FB /* EGL_CONTEXT_MINOR_VERSION */, min,
+                                  0x30FD /* EGL_CONTEXT_OPENGL_PROFILE_MASK */, maj >= 3 && (maj > 3 || min >= 2) ? 0x1 /* CORE */ : 0x2 /* COMPAT */, EGL_NONE };
+            win->context = p_eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, ca);
+            if (win->context == EGL_NO_CONTEXT) {   /* front ends that ignore profile attributes */
+                const EGLint basic[] = { 0x3098, maj, 0x30FB, min, EGL_NONE };
+                win->context = p_eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, basic);
+            }
+        } else {
+            const EGLint ca[] = { EGL_CONTEXT_CLIENT_VERSION, g_ctxKind == CTX_EGL_GLES3 ? 3 : 2, EGL_NONE };
+            win->context = p_eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, ca);
+        }
         if (win->context == EGL_NO_CONTEXT) { glfw_error(GLFW_PLATFORM_ERROR, "eglCreateContext failed"); return 0; }
     }
     if (!p_eglMakeCurrent(g_dpy, win->surface, win->surface, win->context)) { glfw_error(GLFW_PLATFORM_ERROR, "eglMakeCurrent failed"); return 0; }
@@ -615,6 +629,11 @@ CS_EXPORT void *glfwGetProcAddress(const char *name) {
         static void *(*gl4esProc)(const char *) = NULL; static int looked = 0;
         if (!looked) { gl4esProc = dlsym(g_glLib, "gl4es_GetProcAddress"); looked = 1; }
         p = gl4esProc ? gl4esProc(name) : NULL;
+        if (!p) {   /* MobileGlues and GL4ES (Android.mk build) export the GLX resolver */
+            static void *(*glxProc)(const char *) = NULL; static int lookedGlx = 0;
+            if (!lookedGlx) { glxProc = dlsym(g_glLib, "glXGetProcAddress"); if (!glxProc) glxProc = dlsym(g_glLib, "glXGetProcAddressARB"); lookedGlx = 1; }
+            if (glxProc) p = glxProc(name);
+        }
         if (!p) p = dlsym(g_glLib, name);
     }
     if (!p && p_eglGetProcAddress) p = p_eglGetProcAddress(name);

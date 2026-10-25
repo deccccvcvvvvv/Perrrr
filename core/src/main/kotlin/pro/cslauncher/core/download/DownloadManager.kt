@@ -123,7 +123,7 @@ class DownloadManager(
         if (need == 0L || tasks.isEmpty()) return
         val dir = tasks.first().destination.toAbsolutePath().parent
         Files.createDirectories(dir)
-        val free = runCatching { Files.getFileStore(dir).usableSpace }.getOrDefault(Long.MAX_VALUE)
+        val free = pro.cslauncher.core.util.FsUtil.usableSpace(dir).takeIf { it > 0 } ?: Long.MAX_VALUE
         if (free < need + 64L * 1024 * 1024) throw InsufficientStorageException(need, free)
     }
 

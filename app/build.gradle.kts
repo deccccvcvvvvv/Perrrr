@@ -35,6 +35,8 @@ android {
         jniLibs { useLegacyPackaging = true }
         resources { excludes += listOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module") }
     }
+    // Bundled runtimes (.tar.xz) and component packs (.zip) are already compressed; store them as-is.
+    androidResources { noCompress += listOf("xz", "zip") }
     lint { abortOnError = false; checkReleaseBuilds = false }
 }
 

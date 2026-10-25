@@ -38,6 +38,15 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.CSLauncher.Game" />
 
+        <!-- In-game control editor: translucent over the running game, in the game process. -->
+        <activity
+            android:name=".ui.ControlEditorOverlayActivity"
+            android:process=":game"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:theme="@style/Theme.CSLauncher.Overlay" />
+
         <!-- The game VM runs in its own process: a crash or System.exit never takes the launcher down. -->
         <activity
             android:name=".game.GameActivity"

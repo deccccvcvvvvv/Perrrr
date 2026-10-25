@@ -219,7 +219,7 @@ private fun StorageSection(vm: LauncherViewModel) {
     LaunchedEffect(refresh) {
         entries = withContext(Dispatchers.IO) { runCatching { StorageAnalyzer(Services.dirs).analyze(Services.profiles.load().profiles.mapNotNull { pr -> runCatching { pr.gameDir(Services.dirs) }.getOrNull() }) }.getOrDefault(emptyList()) }
     }
-    val free = remember(refresh) { runCatching { Files.getFileStore(Services.dirs.root).usableSpace }.getOrDefault(0L) }
+    val free = remember(refresh) { pro.cslauncher.core.util.FsUtil.usableSpace(Services.dirs.root) }
     InfoRow("Free space", formatBytes(free))
     if (entries == null) LinearProgressIndicator(Modifier.fillMaxWidth(), color = p.accent)
     entries?.sortedByDescending { it.bytes }?.forEach { e ->

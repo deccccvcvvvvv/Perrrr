@@ -6,8 +6,64 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  NDK_VERSION: 26.3.11579264
+
 jobs:
+  # Builds LWJGL (from upstream sources), libffi, FreeType, OpenAL Soft, GL4ES and MobileGlues for each ABI and
+  # packages them as verified component packs that the APK bundles. Cached by the hash of the build scripts.
+  natives:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [ arm64-v8a, armeabi-v7a, x86_64 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore native bundle cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: natives-out
+          key: natives-${{ matrix.abi }}-${{ hashFiles('tools/natives/**') }}
+
+      - name: Set up JDK 17
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install tools (Ant, Ninja, NDK)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ant ninja-build > /dev/null
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          (yes | "$SDKM" --licenses > /dev/null) || true
+          "$SDKM" "ndk;$NDK_VERSION" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Cache LWJGL generator output
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: .natives-work/lwjgl3
+          key: lwjgl-gen-3.3.3-v1
+
+      - name: Build natives
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: tools/natives/build_natives.sh build ${{ matrix.abi }} natives-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: natives-${{ matrix.abi }}
+          path: natives-out/
+          retention-days: 7
+
   build:
+    needs: natives
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -25,8 +81,28 @@ jobs:
           SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
           echo "Using $SDKM (ANDROID_HOME=$ANDROID_HOME)"
           (yes | "$SDKM" --licenses > /dev/null) || true
-          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264" "cmake;3.22.1" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" "ndk;$NDK_VERSION" "cmake;3.22.1" > /tmp/sdk.log || { tail -50 /tmp/sdk.log; exit 1; }
           echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Collect native bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: natives-*
+          path: natives-dl
+
+      # Java runtimes are bundled for arm64-v8a (nearly every phone). Other ABIs download the same builds
+      # automatically on first launch, verified against the published SHA-256 digests.
+      - name: Assemble APK assets (components + Java runtimes)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p app/src/main/assets
+          for d in natives-dl/natives-*; do cp -r "$d"/bundled app/src/main/assets/; done
+          tools/natives/build_natives.sh runtimes arm64-v8a app/src/main/assets
+          find app/src/main/assets -maxdepth 4 -type f -printf '%10s  %p\n' | sort -k2
+          for f in app/src/main/assets/bundled/*/index.json; do echo "== $f"; cat "$f"; done
+        shell: bash
+        # build_natives.sh runtimes only needs curl/python/tar (no NDK work)
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -42,6 +118,13 @@ jobs:
 
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain -Dorg.gradle.jvmargs="-Xmx3g -XX:MaxMetaspaceSize=512m"
+
+      - name: Verify bundled natives inside the APK
+        run: |
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "assets/bundled/.*(index.json|\.zip|\.tar\.xz)" | tee /tmp/bundled.txt
+          grep -q "assets/bundled/arm64-v8a/components/lwjgl3-android.zip" /tmp/bundled.txt
+          grep -q "assets/bundled/arm64-v8a/components/mobileglues.zip" /tmp/bundled.txt
+          grep -q "assets/bundled/arm64-v8a/runtimes/jre21.tar.xz" /tmp/bundled.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

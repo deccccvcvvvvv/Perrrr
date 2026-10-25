@@ -36,6 +36,9 @@ object NativeBridge {
     @JvmStatic external fun redirectStdio(logPath: String): Boolean
     @JvmStatic external fun setEnv(key: String, value: String)
     @JvmStatic external fun chdir(dir: String): Boolean
+    @JvmStatic external fun updateLinkerPath(path: String): Boolean
+    /** Returns null on success, otherwise "path: reason" for the first required library that failed. */
+    @JvmStatic external fun preloadLibraries(paths: Array<String>, required: BooleanArray): String?
     @JvmStatic external fun launchJvm(libjvm: String, options: Array<String>, mainClass: String, args: Array<String>, stackMb: Int): Int
 
     // ---- callbacks from native threads ----

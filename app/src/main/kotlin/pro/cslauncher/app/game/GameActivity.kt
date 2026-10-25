@@ -1,5 +1,6 @@
 package pro.cslauncher.app.game
 
+import pro.cslauncher.core.launch.AndroidRuntimeEnv
 import android.Manifest
 import android.app.AlertDialog
 import android.content.ClipData
@@ -70,6 +71,12 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
         val data = r.data
         if (r.resultCode == RESULT_OK && data != null) startRecorder(r.resultCode, data)
         else Toast.makeText(this, "Screen capture permission was not granted", Toast.LENGTH_SHORT).show()
+    }
+    private val controlEditor = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        // Reload whatever was saved (the same layout, or another one the user opened and saved) and apply it live.
+        val id = r.data?.getStringExtra(pro.cslauncher.app.ui.ControlEditorActivity.RESULT_LAYOUT) ?: engine.layout.id
+        runCatching { ControlLayoutStore(Services.dirs.config.resolve("controls")).load(id) }.onSuccess { engine.setLayout(it); overlay.invalidate() }
+        immersive()
     }
     private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) Toast.makeText(this, "Microphone denied: recording without microphone audio", Toast.LENGTH_SHORT).show()
@@ -149,8 +156,15 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             val s = GameSession(plan, intent.getStringExtra(EXTRA_FINGERPRINT)); session = s
             File(plan.sessionDir, "tmp").mkdirs()
             if (!NativeBridge.redirectStdio(plan.logFile)) error("Cannot create the game log file")
-            val env = LinkedHashMap<String, String>()
-            env["HOME"] = plan.workingDir; env["TMPDIR"] = File(plan.sessionDir, "tmp").absolutePath
+            val tmp = File(plan.sessionDir, "tmp").absolutePath
+            val resolv = File(plan.sessionDir, "resolv.conf").apply { writeText(AndroidRuntimeEnv.resolvConf(systemDnsServers())) }
+            val rt = AndroidRuntimeEnv.build(libjvm, plan.javaMajor, plan.nativeDirs, plan.rendererLibraries, tmp, plan.workingDir,
+                resolv.absolutePath, java.util.TimeZone.getDefault().id, android.os.Build.VERSION.RELEASE, exec.jvmArgs)
+            NativeBridge.updateLinkerPath(rt.linkerPath)
+            NativeBridge.preloadLibraries(rt.preload.map { it.first }.toTypedArray(), rt.preload.map { it.second }.toBooleanArray())
+                ?.let { error("The Java runtime could not be loaded: $it") }
+            val env = LinkedHashMap<String, String>(rt.env)
+            env["MG_DIR_PATH"] = File(plan.sessionDir, "../../renderer/mobileglues").canonicalPath.also { File(it).mkdirs() }
             env["CS_CONTEXT"] = plan.rendererContext
             plan.rendererLibraries["gl"]?.let { env["CS_GL_LIB"] = it }
             plan.rendererLibraries["egl"]?.let { env["CS_EGL_LIB"] = it }
@@ -158,7 +172,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             env.putAll(plan.env)
             env.forEach { (k, v) -> NativeBridge.setEnv(k, v) }
             File(plan.workingDir).mkdirs(); NativeBridge.chdir(plan.workingDir)
-            val opts = JvmOptionNormalizer.normalize(exec.jvmArgs).options
+            val opts = JvmOptionNormalizer.normalize(exec.jvmArgs + rt.jvmOptions).options
             println("[CSLauncher] Starting ${plan.versionId} with renderer ${plan.rendererId} (${plan.rendererContext}), Java ${plan.javaMajor}")
             val rc = NativeBridge.launchJvm(libjvm, opts.toTypedArray(), exec.mainClass, exec.gameArgs.toTypedArray(), 16)
             if (rc != 0) error("Could not start the game thread (error $rc)")
@@ -169,6 +183,11 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             main.post { fatal(msg) }
         }
     }
+
+    private fun systemDnsServers(): List<String> = try {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        cm.getLinkProperties(cm.activeNetwork)?.dnsServers?.mapNotNull { it.hostAddress } ?: emptyList()
+    } catch (e: Exception) { emptyList() }
 
     private fun fatal(message: String) {
         if (isFinishing) return
@@ -214,6 +233,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
         PopupMenu(this, overlay, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
             menu.add(0, 1, 0, if (engine.overlayHidden) "Show controls" else "Hide controls")
             menu.add(0, 2, 1, "Keyboard")
+            menu.add(0, 7, 2, "Edit controls")
             menu.add(0, 3, 2, if (rec.recording) "Stop recording" else "Start recording")
             if (rec.recording) menu.add(0, 4, 3, if (rec.paused) "Resume recording" else "Pause recording")
             menu.add(0, 5, 4, "Quit game (saves world)")
@@ -223,6 +243,8 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
                     1 -> onCommand(InputAction.ToggleOverlay); 2 -> onCommand(InputAction.ShowKeyboard); 3 -> toggleRecording()
                     4 -> startService(Intent(this@GameActivity, RecorderService::class.java).setAction(if (rec.paused) RecorderService.ACTION_RESUME else RecorderService.ACTION_PAUSE))
                     5 -> NativeBridge.requestClose()
+                    7 -> controlEditor.launch(Intent(this@GameActivity, pro.cslauncher.app.ui.ControlEditorOverlayActivity::class.java)
+                        .putExtra(pro.cslauncher.app.ui.ControlEditorActivity.EXTRA_LAYOUT, engine.layout.id))
                     6 -> AlertDialog.Builder(this@GameActivity).setTitle("Force stop the game?")
                         .setMessage("Unsaved progress since the last autosave will be lost. Use \"Quit game\" to save first.")
                         .setNegativeButton("Cancel", null).setPositiveButton("Force stop") { _, _ -> session?.exited(137); finishAndRemoveTask(); Process.killProcess(Process.myPid()) }.show()

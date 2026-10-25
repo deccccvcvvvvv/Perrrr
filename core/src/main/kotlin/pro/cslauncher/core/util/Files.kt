@@ -16,6 +16,16 @@ object FsUtil {
     fun readText(p: Path): String = String(Files.readAllBytes(p), Charsets.UTF_8)
     fun writeText(p: Path, text: CharSequence, vararg options: java.nio.file.OpenOption): Path = Files.write(p, text.toString().toByteArray(Charsets.UTF_8), *options)
 
+    /**
+     * Free bytes on the volume holding [p] (or its nearest existing parent). Uses java.io.File because Android's
+     * java.nio declares Files.getFileStore but throws at runtime.
+     */
+    fun usableSpace(p: Path): Long {
+        var f: java.io.File? = p.toAbsolutePath().toFile()
+        while (f != null && !f.exists()) f = f.parentFile
+        return f?.usableSpace ?: 0L
+    }
+
     fun writeAtomic(target: Path, text: String) = writeAtomic(target, text.toByteArray(Charsets.UTF_8))
 
     /** Total size of regular files below [dir] without following symlinks. */

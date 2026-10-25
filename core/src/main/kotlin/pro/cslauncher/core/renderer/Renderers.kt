@@ -4,7 +4,7 @@ import pro.cslauncher.core.platform.PlatformInfo
 import java.nio.file.Path
 
 /** How the native layer must create the GL context for a backend. */
-enum class ContextKind { EGL_GLES2, EGL_GLES3, OSMESA, DESKTOP_GL }
+enum class ContextKind { EGL_GLES2, EGL_GLES3, OSMESA, DESKTOP_GL, EGL_DESKTOP }
 
 data class RendererEnvironment(
     val platform: PlatformInfo,
@@ -109,6 +109,32 @@ class Gl4esAngleBackend : RendererBackend {
     }
 }
 
+/**
+ * MobileGlues (LGPL-2.1): desktop OpenGL 4.x front end over OpenGL ES 3.x with GLSL translation. It owns the EGL
+ * front end (contexts are created through its eglCreateContext with EGL_OPENGL_API), so it is used as both the
+ * EGL and the GL library. This is the default for Minecraft 1.17+, which needs a GL 3.2 core profile.
+ */
+class MobileGluesBackend : RendererBackend {
+    override val id = "mobileglues"
+    override val displayName = "MobileGlues"
+    override val description = "OpenGL 4 on top of OpenGL ES 3.x. Recommended for Minecraft 1.17 and newer."
+    override val license = "LGPL-2.1 (MobileGlues), Apache-2.0 (SPIRV-Cross), BSD/MIT (glslang)"
+    override val requiredLibraries = listOf("libmobileglues.so")
+    override val options = emptyList<RendererOption>()   // MobileGlues reads its own config.json in MG_DIR_PATH
+    override fun status(env: RendererEnvironment): RendererStatus = when {
+        !env.platform.isAndroid -> RendererStatus(RendererState.NOT_APPLICABLE, "Android only")
+        !env.gameUsesLwjgl3 -> RendererStatus(RendererState.GAME_UNSUPPORTED, "LWJGL 2 versions are not supported")
+        env.glesVersion in 1..29 -> RendererStatus(RendererState.DEVICE_UNSUPPORTED, "Requires OpenGL ES 3.0+, device reports ${env.glesVersion / 10}.${env.glesVersion % 10}")
+        missingLibs(env).isNotEmpty() -> RendererStatus(RendererState.MISSING_COMPONENT, "Install the MobileGlues component pack", missingLibs(env))
+        else -> RendererStatus(RendererState.AVAILABLE, if (env.glesVersion in 30..31) "Ready (ES ${env.glesVersion / 10}.${env.glesVersion % 10}; ES 3.2 works best)" else "Ready")
+    }
+    override fun configure(env: RendererEnvironment, options: Map<String, String>): RendererConfig {
+        val mg = env.libraries.getValue("libmobileglues.so")
+        return RendererConfig(id, ContextKind.EGL_DESKTOP, mg, mg, null, env = emptyMap(),
+            jvmProps = mapOf("org.lwjgl.opengl.libname" to mg.toString(), "org.lwjgl.egl.libname" to mg.toString()))
+    }
+}
+
 /** Mesa Zink (OpenGL 4.x over Vulkan) via OSMesa off-screen context, blitted to the Android window. */
 class ZinkBackend : RendererBackend {
     override val id = "zink"
@@ -155,7 +181,7 @@ class SystemGlBackend : RendererBackend {
 
 data class RendererDecision(val backend: RendererBackend?, val config: RendererConfig?, val reason: String, val statuses: Map<String, RendererStatus>, val fromMemory: Boolean = false)
 
-class RendererRegistry(val backends: List<RendererBackend> = listOf(SystemGlBackend(), Gl4esBackend(), ZinkBackend(), Gl4esAngleBackend())) {
+class RendererRegistry(val backends: List<RendererBackend> = listOf(SystemGlBackend(), MobileGluesBackend(), Gl4esBackend(), ZinkBackend(), Gl4esAngleBackend())) {
     fun byId(id: String) = backends.firstOrNull { it.id == id }
     fun statuses(env: RendererEnvironment) = backends.associate { it.id to it.status(env) }
 
@@ -182,7 +208,8 @@ class RendererRegistry(val backends: List<RendererBackend> = listOf(SystemGlBack
             if (b != null && st[id]?.usable == true && fp == fingerprint(env, id) && fp !in failedFingerprints)
                 return RendererDecision(b, b.configure(env, options), "Last successful renderer for this setup", st, fromMemory = true)
         }
-        val order = if (env.gameNeedsGl32Core) listOf("system-gl", "zink", "gl4es", "gl4es-angle") else listOf("system-gl", "gl4es", "gl4es-angle", "zink")
+        val order = if (env.gameNeedsGl32Core) listOf("system-gl", "mobileglues", "zink", "gl4es", "gl4es-angle")
+                    else listOf("system-gl", "gl4es", "mobileglues", "gl4es-angle", "zink")
         for (id in order) {
             val b = byId(id) ?: continue
             if (st[id]?.usable == true && fingerprint(env, id) !in failedFingerprints) return RendererDecision(b, b.configure(env, options), "Automatically selected", st)

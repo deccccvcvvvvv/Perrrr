@@ -21,7 +21,7 @@ class DynamicCursor(var settings: CursorSettings) {
     fun setBounds(w: Int, h: Int) {
         val first = width <= 1
         width = w.coerceAtLeast(1); height = h.coerceAtLeast(1)
-        if (first) { x = width / 2f; y = height / 2f } else { x = x.coerceIn(0f, width - 1f); y = y.coerceIn(0f, height - 1f) }
+        if (first) { x = width / 2f; y = height / 2f } else { x = x.coerceIn(0f, maxOf(0f, width - 1f)); y = y.coerceIn(0f, maxOf(0f, height - 1f)) }
     }
 
     /** Resolved behaviour for the current state. */
@@ -49,10 +49,10 @@ class DynamicCursor(var settings: CursorSettings) {
     }
     fun moveAbsolute(nx: Float, ny: Float) = setPos(nx, ny)
     /** The game moved the pointer (glfwSetCursorPos). */
-    fun syncFromGame(nx: Float, ny: Float) { x = nx.coerceIn(0f, width - 1f); y = ny.coerceIn(0f, height - 1f); trail.clear() }
+    fun syncFromGame(nx: Float, ny: Float) { x = nx.coerceIn(0f, maxOf(0f, width - 1f)); y = ny.coerceIn(0f, maxOf(0f, height - 1f)); trail.clear() }
 
     private fun setPos(nx: Float, ny: Float) {
-        x = nx.coerceIn(0f, width - 1f); y = ny.coerceIn(0f, height - 1f)
+        x = nx.coerceIn(0f, maxOf(0f, width - 1f)); y = ny.coerceIn(0f, maxOf(0f, height - 1f))
         if (settings.trail) { trail.addLast(x to y); while (trail.size > 8) trail.removeFirst() }
     }
 

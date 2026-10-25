@@ -185,3 +185,55 @@ CS_EXPORT JNIEXPORT jboolean JNICALL Java_pro_cslauncher_app_game_NativeBridge_c
     (*env)->ReleaseStringUTFChars(env, dir, d);
     return rc == 0 ? JNI_TRUE : JNI_FALSE;
 }
+
+/*
+ * Android's dynamic linker does not honour LD_LIBRARY_PATH changes made after process start and the
+ * app linker namespace does not know about the JRE / LWJGL / renderer directories. Two things make
+ * the in-process JVM work:
+ *  1. extend the namespace search path via android_update_LD_LIBRARY_PATH (exported by libdl on all
+ *     supported Android versions; looked up dynamically because it is not part of the public NDK);
+ *  2. preload every runtime library by absolute path, in dependency order, with RTLD_GLOBAL so that
+ *     later dlopen("libjava.so") calls made by HotSpot resolve to the already-loaded instance.
+ */
+typedef void (*update_ld_path_fn)(const char *);
+
+CS_EXPORT JNIEXPORT jboolean JNICALL Java_pro_cslauncher_app_game_NativeBridge_updateLinkerPath(JNIEnv *env, jclass c, jstring path) {
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL);
+    update_ld_path_fn fn = (update_ld_path_fn) dlsym(RTLD_DEFAULT, "android_update_LD_LIBRARY_PATH");
+    if (!fn) fn = (update_ld_path_fn) dlsym(RTLD_DEFAULT, "__loader_android_update_LD_LIBRARY_PATH");
+    if (!fn) {
+        void *libdl = dlopen("libdl.so", RTLD_NOW);
+        if (libdl) {
+            fn = (update_ld_path_fn) dlsym(libdl, "android_update_LD_LIBRARY_PATH");
+            if (!fn) fn = (update_ld_path_fn) dlsym(libdl, "__loader_android_update_LD_LIBRARY_PATH");
+        }
+    }
+    if (fn) { fn(p); LOGI("linker search path updated"); }
+    else LOGE("android_update_LD_LIBRARY_PATH unavailable; relying on absolute-path preloading");
+    setenv("LD_LIBRARY_PATH", p, 1);
+    (*env)->ReleaseStringUTFChars(env, path, p);
+    return fn ? JNI_TRUE : JNI_FALSE;
+}
+
+/* Returns null on success or "path: dlerror" for the first REQUIRED library that failed. Optional
+ * libraries (required[i] == false) are attempted and failures only logged. */
+CS_EXPORT JNIEXPORT jstring JNICALL Java_pro_cslauncher_app_game_NativeBridge_preloadLibraries(JNIEnv *env, jclass c, jobjectArray paths, jbooleanArray required) {
+    jsize n = (*env)->GetArrayLength(env, paths);
+    jboolean *req = (*env)->GetBooleanArrayElements(env, required, NULL);
+    jstring result = NULL;
+    for (jsize i = 0; i < n && result == NULL; i++) {
+        jstring js = (jstring) (*env)->GetObjectArrayElement(env, paths, i);
+        const char *p = (*env)->GetStringUTFChars(env, js, NULL);
+        if (access(p, R_OK) != 0) {
+            if (req[i]) { char buf[1200]; snprintf(buf, sizeof buf, "%s: file missing", p); result = (*env)->NewStringUTF(env, buf); }
+        } else if (!dlopen(p, RTLD_NOW | RTLD_GLOBAL)) {
+            const char *err = dlerror();
+            LOGE("preload failed %s: %s", p, err ? err : "?");
+            if (req[i]) { char buf[1600]; snprintf(buf, sizeof buf, "%s: %s", p, err ? err : "unknown dlopen error"); result = (*env)->NewStringUTF(env, buf); }
+        } else LOGI("preloaded %s", p);
+        (*env)->ReleaseStringUTFChars(env, js, p);
+        (*env)->DeleteLocalRef(env, js);
+    }
+    (*env)->ReleaseBooleanArrayElements(env, required, req, JNI_ABORT);
+    return result;
+}

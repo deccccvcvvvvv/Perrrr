@@ -6,16 +6,21 @@ import java.nio.file.*
 import java.nio.file.attribute.PosixFilePermission
 import java.util.zip.GZIPInputStream
 
-/** Minimal, hardened ustar/GNU/pax tar reader (used for Java runtime archives, .tar or .tar.gz). */
+/** Minimal, hardened ustar/GNU/pax tar reader (used for Java runtime archives: .tar, .tar.gz or .tar.xz). */
 object SafeTar {
     fun extract(archive: Path, destDir: Path, stripComponents: Int = 0, maxTotalBytes: Long = 4L shl 30): ExtractResult {
         Files.createDirectories(destDir)
         val root = destDir.toAbsolutePath().normalize()
         val raw = BufferedInputStream(Files.newInputStream(archive))
-        raw.mark(4)
-        val magic = ByteArray(2).also { raw.read(it) }
+        raw.mark(8)
+        val magic = ByteArray(6).also { raw.read(it) }
         raw.reset()
-        val input: InputStream = if (magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte()) GZIPInputStream(raw, 65536) else raw
+        val isXz = magic[0] == 0xFD.toByte() && magic[1] == '7'.code.toByte() && magic[2] == 'z'.code.toByte() && magic[3] == 'X'.code.toByte() && magic[4] == 'Z'.code.toByte()
+        val input: InputStream = when {
+            magic[0] == 0x1f.toByte() && magic[1] == 0x8b.toByte() -> GZIPInputStream(raw, 65536)
+            isXz -> BufferedInputStream(org.tukaani.xz.XZInputStream(raw), 65536)   // Android OpenJDK builds ship as .tar.xz
+            else -> raw
+        }
         var files = 0; var total = 0L
         val links = mutableListOf<Pair<Path, String>>()
         input.use { ins ->

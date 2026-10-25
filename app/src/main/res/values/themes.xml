@@ -9,5 +9,11 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@android:color/black</item>
     </style>
+    <style name="Theme.CSLauncher.Overlay" parent="Theme.CSLauncher">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
     <color name="bg">#FF0B0B0E</color>
 </resources>

@@ -7,3 +7,7 @@ local.properties
 .externalNativeBuild/
 captures/
 .kotlin/
+.natives-work/
+natives-out/
+natives-dl/
+app/src/main/assets/bundled/

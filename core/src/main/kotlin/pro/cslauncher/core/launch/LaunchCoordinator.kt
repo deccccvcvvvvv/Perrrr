@@ -47,6 +47,17 @@ data class PreparedLaunch(val plan: LaunchPlan, val accessToken: String, val res
     val message: String? = null, val crashLine: String? = null, val startedAtMs: Long, val endedAtMs: Long? = null, val rendererFingerprint: String? = null,
 )
 
+/**
+ * Supplies runtimes and native components automatically (from the APK or a verified download) so the user
+ * never has to import anything by hand. Implementations must verify checksums before activating anything.
+ */
+interface Provisioner {
+    /** Makes sure a runtime for Java [major] is installed if the launcher can supply one. */
+    fun ensureRuntime(major: Int, progress: (String) -> Unit)
+    /** Installs/updates bundled native component packs (LWJGL, renderers) when missing or outdated. */
+    fun ensureComponents(progress: (String) -> Unit)
+}
+
 class LaunchCoordinator(
     private val dirs: LauncherDirs,
     private val platform: PlatformInfo,
@@ -54,6 +65,7 @@ class LaunchCoordinator(
     private val runtimes: RuntimeManager,
     private val renderers: RendererRegistry,
     private val components: ComponentManager?,
+    private val provisioner: Provisioner? = null,
 ) {
     private val planner = LaunchPlanner(dirs, platform)
 
@@ -79,19 +91,27 @@ class LaunchCoordinator(
         else runCatching {
             Files.createDirectories(gameDir); LauncherDirs.GAME_SUBDIRS.forEach { Files.createDirectories(gameDir.resolve(it)) }
             val probe = gameDir.resolve(".cs-write-test"); pro.cslauncher.core.util.FsUtil.writeText(probe, "ok"); Files.delete(probe)
-            val free = Files.getFileStore(gameDir).usableSpace
+            val free = pro.cslauncher.core.util.FsUtil.usableSpace(gameDir)
             if (free < 150L * 1024 * 1024) issues += LaunchIssue(LaunchState.VALIDATING, "Only ${free / 1048576} MB free; at least 150 MB are needed for logs and world saves", FixAction.FREE_STORAGE)
         }.onFailure { issues += LaunchIssue(LaunchState.VALIDATING, "Game directory $gameDir is not writable: ${it.message}", FixAction.FIX_GAME_DIRECTORY) }
         if (issues.any { it.blocking }) block(LaunchState.VALIDATING)
 
         sm.advance(LaunchState.PREPARING_RUNTIME)
         val required = RuntimeSelector.requiredMajorFor(rv.meta.javaMajor)
+        provisioner?.let { pv ->
+            runCatching { pv.ensureRuntime(required) { msg -> sm.progress(msg) } }
+                .onFailure { CsLog.w("Launch", "Automatic Java $required setup failed: ${it.message}"); issues += LaunchIssue(LaunchState.PREPARING_RUNTIME, "Automatic Java $required setup failed: ${it.message}", FixAction.INSTALL_RUNTIME, blocking = false) }
+        }
         val choice = RuntimeSelector.select(required, rv.meta.usesLwjgl3, runtimes.list(), platform, p.runtimeId)
         if (choice.runtime == null) { issues += LaunchIssue(LaunchState.PREPARING_RUNTIME, choice.reason, FixAction.INSTALL_RUNTIME); block(LaunchState.PREPARING_RUNTIME) }
         if (choice.compatibility == Compatibility.RISKY) issues += LaunchIssue(LaunchState.PREPARING_RUNTIME, choice.reason, FixAction.INSTALL_RUNTIME, blocking = false)
         if (platform.isAndroid && choice.runtime.libjvm() == null) { issues += LaunchIssue(LaunchState.PREPARING_RUNTIME, "Runtime ${choice.runtime.id} has no libjvm.so", FixAction.INSTALL_RUNTIME); block(LaunchState.PREPARING_RUNTIME) }
 
         sm.advance(LaunchState.PREPARING_RENDERER)
+        provisioner?.let { pv ->
+            runCatching { pv.ensureComponents { msg -> sm.progress(msg) } }
+                .onFailure { CsLog.w("Launch", "Bundled component setup failed: ${it.message}"); issues += LaunchIssue(LaunchState.PREPARING_RENDERER, "Bundled component setup failed: ${it.message}", FixAction.INSTALL_COMPONENT, blocking = false) }
+        }
         val env = req.environment(rv)
         val lwjgl = if (platform.isAndroid) components?.lwjgl(platform.arch.androidAbi!!) else null
         if (platform.isAndroid) {

@@ -31,6 +31,9 @@ class LaunchStateMachine {
         _status.value = LaunchStatus(to, message = message)
     }
 
+    /** Updates the status message without changing state (e.g. "Unpacking Java 21…"). */
+    @Synchronized fun progress(message: String) { _status.value = _status.value.copy(message = message) }
+
     @Synchronized fun fail(message: String) {
         val from = state
         if (from == LaunchState.FAILED || from == LaunchState.EXITED || from == LaunchState.IDLE) return

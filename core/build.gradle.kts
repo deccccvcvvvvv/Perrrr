@@ -14,6 +14,7 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.2")
+    implementation("org.tukaani:xz:1.10") // public domain; decodes the Android OpenJDK .tar.xz archives
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

@@ -16,10 +16,14 @@ data class Geometry(
 
     fun rectOf(e: ControlElement): Rect {
         val w = e.widthDp * density; val h = e.heightDp * density
-        val cx = (safeLeft + e.x * safeWidth).coerceIn(safeLeft + w / 2, safeLeft + safeWidth - w / 2)
-        val cy = (safeTop + e.y * safeHeight).coerceIn(safeTop + h / 2, safeTop + safeHeight - h / 2)
+        // When a control is larger than the area (tiny window, first layout pass) centre it instead of throwing on an empty range.
+        val cx = clampCentre(safeLeft + e.x * safeWidth, safeLeft.toFloat(), safeWidth.toFloat(), w)
+        val cy = clampCentre(safeTop + e.y * safeHeight, safeTop.toFloat(), safeHeight.toFloat(), h)
         return Rect(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
     }
+    private fun clampCentre(v: Float, start: Float, size: Float, extent: Float): Float =
+        if (extent >= size) start + size / 2 else v.coerceIn(start + extent / 2, start + size - extent / 2)
+
     /** Inverse of [rectOf] for the editor: pixel centre → normalised position. */
     fun normalised(cxPx: Float, cyPx: Float): Pair<Float, Float> =
         ((cxPx - safeLeft) / safeWidth).coerceIn(0f, 1f) to ((cyPx - safeTop) / safeHeight).coerceIn(0f, 1f)

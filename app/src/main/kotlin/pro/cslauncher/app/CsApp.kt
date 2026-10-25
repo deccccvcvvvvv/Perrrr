@@ -19,7 +19,9 @@ import pro.cslauncher.core.net.UrlConnectionTransport
 import pro.cslauncher.core.platform.PlatformInfo
 import pro.cslauncher.core.profile.ProfileStore
 import pro.cslauncher.core.renderer.RendererRegistry
+import pro.cslauncher.core.runtime.AutoProvisioner
 import pro.cslauncher.core.runtime.RuntimeManager
+import pro.cslauncher.app.platform.AssetBundleSource
 import pro.cslauncher.core.settings.SettingsStore
 import pro.cslauncher.core.util.CsLog
 import pro.cslauncher.core.util.LogLevel
@@ -32,6 +34,9 @@ class CsApp : Application() {
         val nm = getSystemService(NotificationManager::class.java)   // minSdk 26: channels always exist
         nm.createNotificationChannel(NotificationChannel(CHANNEL_INSTALL, getString(R.string.channel_install), NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CHANNEL_RECORD, getString(R.string.channel_record), NotificationManager.IMPORTANCE_LOW))
+        // Launcher process only: unpack bundled LWJGL/renderer packs in the background so renderer status is accurate.
+        if (Build.VERSION.SDK_INT < 28 || !Application.getProcessName().endsWith(":game"))
+            Thread({ runCatching { Services.provisioner.ensureComponents { CsLog.i("Provision", it) } }.onFailure { CsLog.e("Provision", "Bundled components: ${it.message}", it) } }, "cs-provision").start()
     }
     companion object { const val CHANNEL_INSTALL = "install"; const val CHANNEL_RECORD = "record" }
 }
@@ -64,8 +69,10 @@ object Services {
     val runtimes by lazy { RuntimeManager(dirs, platform) }
     val renderers by lazy { RendererRegistry() }
     val device by lazy { AndroidDevice(app) }
-    val coordinator by lazy { LaunchCoordinator(dirs, platform, installer, runtimes, renderers, components) }
+    val provisioner by lazy { AutoProvisioner(dirs, platform, runtimes, components, AssetBundleSource(app.assets), http, downloads) }
+    val coordinator by lazy { LaunchCoordinator(dirs, platform, installer, runtimes, renderers, components, provisioner) }
     val launcherLogFile: File get() = File(app.filesDir, "logs/launcher.log")
+    val lastCrashFile: File get() = File(app.filesDir, "logs/last-crash.txt")
 
     fun init(ctx: Context) {
         app = ctx.applicationContext
@@ -74,6 +81,16 @@ object Services {
         CsLog.addSink { r ->
             android.util.Log.println(when (r.level) { LogLevel.DEBUG -> 3; LogLevel.INFO -> 4; LogLevel.WARN -> 5; LogLevel.ERROR -> 6 }, "CS/" + r.tag, r.message)
             runCatching { launcherLogFile.appendText("${r.time} ${r.level} ${r.tag}: ${r.message}\n") }
+        }
+        // Record uncaught crashes (both processes) so they are visible in Logs & diagnostics after a restart.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                val proc = if (Build.VERSION.SDK_INT >= 28) Application.getProcessName() else "?"
+                val text = "=== ${java.time.Instant.now()} crash in process $proc, thread ${t.name}\n" + android.util.Log.getStackTraceString(e) + "\n"
+                launcherLogFile.appendText(text); File(launcherLogFile.parentFile, "last-crash.txt").writeText(text)
+            }
+            previous?.uncaughtException(t, e)
         }
         // Keep the launcher log bounded.
         if (launcherLogFile.length() > 2_000_000) runCatching { launcherLogFile.renameTo(File(launcherLogFile.parentFile, "launcher.old.log")) }
