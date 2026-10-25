@@ -27,58 +27,51 @@ bundled**, and it has **not been run on any device**.
 
 ## 3. Minecraft versions
 
-| Versions | LWJGL | Renderer path on Android | Status |
-|---|---|---|---|
-| 1.17 – current | 3.x | Zink (needs GL 3.2 core) | Supported by the launch logic. Needs runtime + LWJGL + Mesa/Zink packs |
-| 1.13 – 1.16.5 | 3.x | GL4ES (GL 2.1), or GL4ES on ANGLE | Supported by the launch logic. Needs runtime + LWJGL + GL4ES pack |
-| ≤ 1.12.2 | 2.x | — | **Not supported** on Android (blocked with an explicit message; no LWJGL 2 compatibility layer) |
-| Fabric / Quilt | — | as vanilla | Installable via official loader metadata |
-| Forge / NeoForge | — | — | **Not supported** (their installers must run as a Java program; the UI shows them disabled) |
+| Versions | Java | LWJGL | Renderer path on Android (auto) | Status |
+|---|---|---|---|---|
+| 26.x (26.1 – 26.4 snapshots) | 25 | **3.4.3 + SDL3** | — | **Blocked with an explicit message.** These versions replaced GLFW with SDL3 and use LWJGL 3.4; the bundled bridge implements GLFW on LWJGL 3.3.3. An SDL3 bridge and an LWJGL 3.4 Android build are future work |
+| 1.17 – 1.21.10 | 16/17/21 | 3.2.x – 3.3.3 | MobileGlues (GL 4.x over GLES 3.x), then Zink, then GL4ES | Launch path implemented. Bundled runtime + LWJGL 3.3.3 + MobileGlues |
+| 1.13 – 1.16.5 | 8 | 3.x | GL4ES (GL 2.1 over GLES 2/3), then MobileGlues | Launch path implemented. Bundled runtime + LWJGL + GL4ES |
+| ≤ 1.12.2 | 8 | 2.x | — | **Not supported** (blocked with an explicit message; no LWJGL 2 compatibility layer) |
+| Fabric / Quilt | as vanilla | — | as vanilla | Installed inside the launcher from the official loader metadata (no installer jar) |
+| Forge / NeoForge | — | — | — | **Not supported yet** (their installers run binary-patching "processors"; the UI shows them disabled) |
 
-The Java major version is taken from each version's metadata (`javaVersion.majorVersion`). The runtime selector refuses
-or warns on mismatches; it does not guess.
+The Java major version is taken from each version's metadata (`javaVersion.majorVersion`). The provisioner installs the
+smallest bundled/verified runtime whose major is ≥ the requirement (8, 17, 21 or 25).
 
 ## 4. Renderer backends
 
 | ID | Provides | Needs | Licence | Default use |
 |---|---|---|---|---|
-| `zink` | OpenGL 4.x via Mesa on Vulkan (OSMesa context blitted to the window) | Vulkan 1.1+, `libOSMesa.so` pack | MIT | auto for 1.17+ |
-| `gl4es` | OpenGL 2.1 → GLES 2/3 | GLES 2.0+, `libgl4es.so` pack | MIT | auto for 1.13–1.16.5 |
-| `gl4es-angle` | GL4ES on ANGLE (GLES on Vulkan) | Vulkan, `libgl4es.so` + `libEGL_angle.so` + `libGLESv2_angle.so` | MIT + BSD-3 | manual / fallback, experimental |
+| `mobileglues` | OpenGL 4.x → GLES 3.x (own EGL wrapper, `EGL_DESKTOP` context) | GLES 3.0+ (3.2 best), bundled `libmobileglues.so` | LGPL-2.1 | auto first choice for 1.17+ |
+| `zink` | OpenGL 4.x via Mesa on Vulkan (OSMesa context blitted to the window) | Vulkan 1.1+, `libOSMesa.so` pack (not bundled) | MIT | auto fallback for 1.17+ |
+| `gl4es` | OpenGL 2.1 → GLES 2/3 | GLES 2.0+, bundled `libgl4es.so` | MIT | auto first choice for 1.13–1.16.5 |
+| `gl4es-angle` | GL4ES on ANGLE (GLES on Vulkan) | Vulkan, `libgl4es.so` + ANGLE libraries (not bundled) | MIT + BSD-3 | manual / fallback, experimental |
 | `system-gl` | desktop OpenGL | — | — | desktop host only (reports *Not applicable* on Android) |
 
 A backend is shown as available only when the device reports the capability **and** its libraries are installed and
-SHA-256-verified. Otherwise the UI shows the exact reason, e.g. *Device unsupported*, *Missing component*, or *Game unsupported*.
-An explicit choice is never silently swapped. In auto mode, a backend that crashed is skipped for the same device/driver/version
-fingerprint, so a crash cannot repeat in a loop.
+SHA-256-verified. Otherwise the UI shows the exact reason. An explicit choice is never silently swapped. In auto mode, a backend
+that crashed is skipped for the same device/driver/version fingerprint.
 
-## 5. Blockers to a playable Android build
+## 5. Bundled native components and remaining blockers
 
-### B1 — Android Java runtime (not bundled)
-The game JVM runs **in-process**: `libcsbridge.so` `dlopen`s `libjvm.so` and calls `JNI_CreateJavaVM`. Android forbids
-executing binaries from app storage (W^X, targetSdk ≥ 29) but allows `dlopen` of libraries, which is why this approach was chosen.
-A desktop JDK cannot work, because it is built against glibc. What is needed:
-* An OpenJDK build for **Android/bionic** (arm64-v8a, plus armeabi-v7a/x86_64 if desired). It must use the `release` file layout
-  with `lib/server/libjvm.so` (9+) or `lib/<arch>/server/libjvm.so` (8).
-* Java 17 for 1.18–1.20.4, Java 21 for 1.20.5+, and later majors as declared by newer versions.
+Everything needed to start a supported version ships **inside the APK** and is installed automatically on first start /
+before the first launch (`AutoProvisioner`). No manual import is needed:
 
-Why it is not bundled: no such build was produced on this host. Building OpenJDK for bionic is a multi-hour cross-compile
-outside this project's scope, and redistributing one requires shipping its GPLv2+CE source offer.
-**Path:** build or obtain a bionic OpenJDK. Then import it in the app via *Settings → Runtimes → Import* (`.zip`, `.tar`
-or `.tar.gz`, optional SHA-256). The importer extracts into staging, probes the `release` file and architecture, and only
-then activates the runtime. Alternatively, ship it as a bundled asset and register it with source `bundled`.
+| Component | Source | Built by | ABIs |
+|---|---|---|---|
+| Java 8 / 17 / 21 / 25 for Android | AngelAuraMC `angelauramc-openjdk-build` releases, pinned by SHA-256 | prebuilt (GPLv2+CE) | bundled for arm64-v8a; other ABIs download the same verified archives on demand |
+| LWJGL 3.3.3 (jars incl. glfw/jemalloc; natives for core, opengl, stb, tinyfd, freetype, openal; GLFW is the launcher's own `libcsglfw.so`, the system allocator replaces jemalloc) | LWJGL 3.3.3 sources, libffi 3.4.6, FreeType 2.13.2, OpenAL Soft 1.23.1 | `tools/natives/build_natives.sh` in CI (NDK 26, API 26) | arm64-v8a, armeabi-v7a, x86_64 |
+| GL4ES | ptitSeb/gl4es (pinned commit) | same | same |
+| MobileGlues | MobileGL-Dev/MobileGlues (pinned commit) | same | same |
 
-### B2 — LWJGL 3 natives for Android (not bundled)
-Mojang's LWJGL natives are desktop (glibc) binaries. On Android the planner removes every `org.lwjgl` library from the
-classpath and substitutes the jars and natives of an **LWJGL component pack**. It sets
-`-Dorg.lwjgl.librarypath=<pack lib dir>` and `-Dorg.lwjgl.glfw.libname=<APK>/libcsglfw.so`, so GLFW is provided by this
-project's own implementation.
-**Path:** build LWJGL 3.3.x for Android (`liblwjgl.so`, `liblwjgl_opengl.so`, `liblwjgl_stb.so`, `liblwjgl_tinyfd.so`, and
-OpenAL Soft `libopenal.so`) plus matching jars. Package them as a component pack (format below) with `provides: ["lwjgl:3.3.3"]`.
+The bundle lives in `assets/bundled/<abi>/index.json` plus SHA-256-verified archives. The runtime is extracted with the
+xz-capable safe tar extractor; components are installed as component packs (format below) and upgraded when the bundled
+version changes. The game JVM runs in-process (`dlopen(libjvm.so)`), with the linker path, `JAVA_HOME`, DNS
+(`ext.net.resolvPath`), time zone and LWJGL library names set up by `AndroidRuntimeEnv`.
 
-### B3 — Renderer libraries (not bundled)
-GL4ES (`libgl4es.so`), Mesa with OSMesa + Zink (`libOSMesa.so`), and optionally ANGLE. Each one is packaged as a component pack
-with `kind: "renderer"` and `provides: ["lib:<name>.so"]`.
+The CI workflow builds these natives from source on every change to `tools/natives/` and refuses to produce an APK if
+any bundle file is missing.
 
 ### B4 — Device validation (not performed)
 No emulator is possible without KVM, and no physical device was attached. On-device validation is needed for:

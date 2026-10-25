@@ -14,7 +14,20 @@
 | Transitive AndroidX (collection, annotation, savedstate, emoji2, profileinstaller, startup, tracing, …), Guava `listenablefuture`, JetBrains annotations | (resolved by Gradle) | Apache-2.0 | pulled in by the above |
 | `libcsglfw.so`, `libcsbridge.so` | this project | project licence | GLFW API on Android, in-process JVM bridge |
 
-No other third-party code is bundled. All Kotlin and C sources in this repository were written for this project.
+| OpenJDK 8/17/21/25 for Android (AngelAuraMC builds) | rolling `download_jre*` tags, pinned by SHA-256 | GPLv2 + Classpath Exception | game Java runtime (arm64-v8a bundled) |
+| LWJGL | 3.3.3 (built from source) | BSD-3-Clause | game bindings |
+| libffi | 3.4.6 | MIT | statically linked into `liblwjgl.so` |
+| FreeType | 2.13.2 | FTL (BSD-style) | `libfreetype.so` for lwjgl-freetype |
+| OpenAL Soft | 1.23.1 | LGPL-2.0+ (shared library, replaceable) | game audio |
+| GL4ES | pinned commit | MIT | GL 2.1 → GLES renderer |
+| MobileGlues | pinned commit | LGPL-2.1 (shared library, replaceable) | GL 4.x → GLES 3 renderer |
+| XZ for Java | 1.10 | 0BSD | `.tar.xz` runtime extraction |
+
+All Kotlin and C sources of the launcher itself were written for this project; no launcher code was copied from other launchers.
+The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` (GL4ES is only switched from
+a static to a shared library in its `Android.mk`). Source URLs and pinned versions are in that script and in each component's
+`cs-component.json` (`license`, `source`). LGPL/GPL obligations: the corresponding source is the pinned upstream revision;
+the libraries are separate shared objects that can be replaced.
 
 ## Build-time only
 
@@ -33,7 +46,7 @@ No other third-party code is bundled. All Kotlin and C sources in this repositor
 | Fabric / Quilt loader metadata & libraries | `meta.fabricmc.net`, `meta.quiltmc.org`, their Maven repos | Apache-2.0 |
 | Mods, resource packs, shaders | Modrinth API (no key), CurseForge API (user-supplied key) | per-project licences, shown on the project page |
 
-## User-imported native payloads (see `COMPATIBILITY.md`)
+## Optional user-imported native payloads (see `COMPATIBILITY.md`)
 
 | Payload | Typical licence | Obligation if *you* redistribute it |
 |---|---|---|
