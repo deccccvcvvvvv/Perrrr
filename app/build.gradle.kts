@@ -58,10 +58,16 @@ dependencies {
 
 // Guards against Java 11+ APIs that compile against the JDK but are absent from Android's class library at minSdk
 // (e.g. Files.readString, Stream.toList) — such calls would only fail at runtime with NoSuchMethodError.
+val checkRegexIcu by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Flags regex literals that the JDK accepts but Android's ICU regex engine rejects (e.g. a bare '}')"
+    commandLine("python3", rootProject.file("tools/check_regex_icu.py").path,
+        rootProject.file("core/src/main").path, file("src/main").path)
+}
 val checkAndroidApi by tasks.registering(Exec::class) {
     group = "verification"
     description = "Checks :core and :app bytecode against the SDK's api-versions.xml for minSdk"
-    dependsOn(":core:jar", "compileDebugKotlin")
+    dependsOn(":core:jar", "compileDebugKotlin", checkRegexIcu)
     val sdk = android.sdkDirectory
     val minSdk = android.defaultConfig.minSdk!!
     commandLine("python3", rootProject.file("tools/check_android_api.py").path,

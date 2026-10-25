@@ -4,7 +4,7 @@ import pro.cslauncher.core.meta.*
 import pro.cslauncher.core.platform.PlatformInfo
 
 object ArgumentBuilder {
-    private val PH = Regex("\\$\\{([A-Za-z0-9_.]+)}")
+    private val PH = Regex("""\$\{([A-Za-z0-9_.]+)\}""")   // "}" escaped: Android's ICU regex rejects a bare "}"
 
     fun substitute(s: String, values: Map<String, String>, unresolved: MutableSet<String>): String =
         PH.replace(s) { m -> values[m.groupValues[1]] ?: run { unresolved += m.groupValues[1]; m.value } }
