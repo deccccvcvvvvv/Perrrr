@@ -98,7 +98,15 @@ jobs:
         run: |
           test -n "$RELEASE_STORE_PASSWORD" && test -n "$RELEASE_KEY_PASSWORD" && test -n "$RELEASE_KEY_ALIAS" || { echo "::error::Release signing configuration is incomplete"; exit 1; }
           ./gradlew :app:assembleRelease --console=plain
-          VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk)"
+          APK="app/build/outputs/apk/release/app-release.apk"
+          SIGNED_APK="${APK%.apk}-verified.apk"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            --ks app/release.keystore --ks-key-alias "$RELEASE_KEY_ALIAS" \
+            --ks-pass env:RELEASE_STORE_PASSWORD --key-pass env:RELEASE_KEY_PASSWORD \
+            --min-sdk-version 26 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+            --out "$SIGNED_APK" "$APK"
+          mv "$SIGNED_APK" "$APK"
+          VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK")"
           printf '%s\n' "$VERIFY_OUTPUT"
           grep -Fq 'Verified using v1 scheme (JAR signing): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v1 signature"; exit 1; }
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v2 signature"; exit 1; }
