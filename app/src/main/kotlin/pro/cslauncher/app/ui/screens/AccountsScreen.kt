@@ -2,9 +2,11 @@ package pro.cslauncher.app.ui.screens
 
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import androidx.browser.customtabs.CustomTabsIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -14,12 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pro.cslauncher.app.ui.LauncherViewModel
+import pro.cslauncher.app.ui.MicrosoftLoginActivity
 import pro.cslauncher.app.ui.MsaState
 import pro.cslauncher.app.ui.theme.*
 import androidx.compose.ui.graphics.Color
@@ -33,6 +34,24 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val msa by vm.msa.collectAsStateWithLifecycle()
+    val microsoftLoginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val code = result.data?.getStringExtra(MicrosoftLoginActivity.EXTRA_CODE)
+            val returnedState = result.data?.getStringExtra(MicrosoftLoginActivity.EXTRA_RETURNED_STATE)
+            if (code.isNullOrBlank()) vm.failMicrosoftLogin("Microsoft did not return an authorization code. Please try again.")
+            else vm.completeMicrosoft(code, returnedState)
+        } else {
+            val error = result.data?.getStringExtra(MicrosoftLoginActivity.EXTRA_ERROR)
+            if (error.isNullOrBlank()) vm.cancelMicrosoft() else vm.failMicrosoftLogin(error)
+        }
+    }
+    LaunchedEffect(msa) {
+        val login = msa as? MsaState.WebLogin ?: return@LaunchedEffect
+        microsoftLoginLauncher.launch(Intent(ctx, MicrosoftLoginActivity::class.java).apply {
+            putExtra(MicrosoftLoginActivity.EXTRA_URL, login.url)
+            putExtra(MicrosoftLoginActivity.EXTRA_STATE, login.state)
+        })
+    }
     var elyName by remember { mutableStateOf("") }
     var elyPassword by remember { mutableStateOf("") }
     var elyOtp by remember { mutableStateOf("") }
@@ -73,19 +92,14 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                     when (val s = msa) {
                         MsaState.Idle, is MsaState.Done -> {
                             if (s is MsaState.Done) Text("Signed in as ${s.name}", color = p.success, fontSize = 13.sp)
-                            Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. You enter the code on Microsoft's own page; the launcher never sees your password.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
-                            Text("Microsoft sign-in opens in a secure browser tab. The launcher never receives your Microsoft password; session tokens are stored encrypted on this device.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. Microsoft’s login page opens inside the launcher; type your password only on an official Microsoft page.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
+                            Text("No Client ID setup is needed. The launcher does not save your Microsoft password; account session tokens are stored encrypted on this device. This legacy launcher-compatible sign-in may stop working if Microsoft changes or blocks it.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
                             Spacer(Modifier.height(8.dp)); PixelButton("Sign in with Microsoft", { vm.startMicrosoft() }, style = PxStyle.PRIMARY, icon = "user_add", height = 36.dp)
                         }
-                        is MsaState.Code -> {
-                            Text("Open the page below and enter this code:", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
-                            Text(s.userCode, color = Color.White, fontSize = 28.sp, fontFamily = Monocraft, modifier = Modifier.padding(vertical = 8.dp))
-                            Text(s.uri, color = p.accent, fontSize = 12.sp)
-                            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                PixelButton("Open secure sign-in tab", { openMicrosoftSignIn(ctx, s.uri) }, style = PxStyle.PRIMARY, height = 38.dp)
-                                PixelButton("Cancel", { vm.cancelMicrosoft() }, height = 38.dp)
-                            }
-                            Text("Waiting for confirmation… (code expires in ${((s.expiresAtMs - System.currentTimeMillis()) / 60000).coerceAtLeast(0)} min)", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                        is MsaState.WebLogin -> {
+                            Text("Opening Microsoft sign-in…", color = p.textSecondary, fontSize = 11.sp)
+                            PixelProgress(null, Modifier.padding(top = 8.dp))
+                            PixelButton("Cancel", { vm.cancelMicrosoft() }, height = 34.dp, modifier = Modifier.padding(top = 6.dp))
                         }
                         is MsaState.Working -> { Text(s.message, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp); PixelProgress(null, Modifier.padding(top = 8.dp)) }
                         is MsaState.Error -> { Text(s.message, color = p.danger, fontSize = 12.sp); PixelButton("Try again", { vm.startMicrosoft() }, icon = "refresh", height = 38.dp, modifier = Modifier.padding(top = 6.dp)) }
@@ -142,22 +156,4 @@ private fun AccountHead(url: String?) {
     val image = head
     if (image == null) PixelIcon("head", size = 26.dp)
     else androidx.compose.foundation.Image(image, "Account skin", Modifier.size(28.dp), filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
-}
-
-/**
- * Microsoft's OAuth device-code page must be opened in a real browser. A Custom Tab gives the
- * in-app browser experience while keeping Microsoft's own cookie jar and security UI. Devices
- * without a Custom-Tabs-capable browser fall back to the normal external browser intent.
- */
-private fun openMicrosoftSignIn(ctx: android.content.Context, url: String) {
-    val uri = Uri.parse(url)
-    val opened = try {
-        CustomTabsIntent.Builder().build().apply {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }.launchUrl(ctx, uri)
-        true
-    } catch (e: Exception) { false }
-    if (!opened) runCatching {
-        ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
 }

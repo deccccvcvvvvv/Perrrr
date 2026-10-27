@@ -33,7 +33,7 @@ CS Launcher Pro is an original design. No code, assets or layouts were taken fro
 │ media/       RecordingPlanner (encoder-capability-gated presets)                                     │
 │ content/     mods, resource/shader packs, worlds, servers.dat, NBT, Modrinth/CurseForge, loaders     │
 │ diagnostics/ CrashAnalyzer (rule-based classification + redaction), RepairEngine (non-destructive)   │
-│ account/     accounts store, Microsoft device-code flow → Xbox → Minecraft token, offline identities │
+│ account/     accounts store, Microsoft legacy Live/Azure → Xbox → Minecraft token, Ely.by + offline identities │
 │ profile/ settings/ perf/ storage/ activity/ net/ platform/ util/                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```

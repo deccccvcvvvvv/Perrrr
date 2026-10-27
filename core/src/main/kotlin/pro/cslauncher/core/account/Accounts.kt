@@ -10,6 +10,7 @@ import java.nio.file.Path
 import java.util.UUID
 
 @Serializable enum class AccountType { MICROSOFT, OFFLINE, ELY_BY }
+@Serializable enum class MicrosoftAuthFlow { LEGACY_LIVE, AZURE_V2 }
 
 /** Non-secret account metadata. Tokens live only in a [SecretStore] (Android Keystore backed on device). */
 @Serializable data class Account(
@@ -17,6 +18,8 @@ import java.util.UUID
     val xuid: String? = null, val addedAtMs: Long = System.currentTimeMillis(),
     val accessTokenExpiresAtMs: Long? = null, val needsRelogin: Boolean = false,
     val skinUrl: String? = null,
+    /** Defaults to null for old account files; new Microsoft logins record which token endpoint minted the refresh token. */
+    val microsoftAuthFlow: MicrosoftAuthFlow? = null,
 )
 
 interface SecretStore {
@@ -83,7 +86,8 @@ class AccountRepository(private val file: Path, private val secrets: SecretStore
         AccountType.MICROSOFT -> {
             val token = secrets.get("${acc.id}.mc") ?: throw AuthException("No stored session for ${acc.username}. Sign in again.")
             if ((acc.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis() + 60_000) throw AuthException("The Minecraft session for ${acc.username} expired. Refresh required.")
-            LaunchSession(acc.username, acc.uuid.replace("-", ""), token, "msa", acc.xuid ?: "0", clientId.ifBlank { "0" }, false)
+            val gameClientId = if (acc.microsoftAuthFlow == MicrosoftAuthFlow.LEGACY_LIVE) MicrosoftLegacyAuthenticator.CLIENT_ID else clientId.ifBlank { "0" }
+            LaunchSession(acc.username, acc.uuid.replace("-", ""), token, "msa", acc.xuid ?: "0", gameClientId, false)
         }
     }
 }
@@ -135,10 +139,10 @@ class MicrosoftAuthenticator(private val http: HttpTransport, private val client
         return MsaTokens(o.str("access_token")!!, o.str("refresh_token") ?: refreshToken)
     }
 
-    fun loginMinecraft(msaAccessToken: String): MinecraftLogin {
+    fun loginMinecraft(msaAccessToken: String, rpsTicketPrefix: String = "d="): MinecraftLogin {
         val json = "application/json"
         val xbl = parseJsonObject(http.postText("https://user.auth.xboxlive.com/user/authenticate",
-            """{"Properties":{"AuthMethod":"RPS","SiteName":"user.auth.xboxlive.com","RpsTicket":"d=$msaAccessToken"},"RelyingParty":"http://auth.xboxlive.com","TokenType":"JWT"}""", json, mapOf("Accept" to json)).also {
+            """{"Properties":{"AuthMethod":"RPS","SiteName":"user.auth.xboxlive.com","RpsTicket":"$rpsTicketPrefix$msaAccessToken"},"RelyingParty":"http://auth.xboxlive.com","TokenType":"JWT"}""", json, mapOf("Accept" to json)).also {
             if (it.first != 200) throw AuthException("Xbox Live authentication failed (HTTP ${it.first})") }.second, "XBL")
         val xblToken = xbl.str("Token")!!
         val uhs = xbl.obj("DisplayClaims")?.arr("xui")?.firstOrNull()?.jsonObject?.str("uhs") ?: throw AuthException("Xbox Live response has no user hash")
@@ -166,4 +170,80 @@ class MicrosoftAuthenticator(private val http: HttpTransport, private val client
         val uuid = UUID(java.lang.Long.parseUnsignedLong(rawId.substring(0, 16), 16), java.lang.Long.parseUnsignedLong(rawId.substring(16), 16)).toString()
         return MinecraftLogin(token, mco.long("expires_in") ?: 86400, uuid, profile.str("name")!!, xuid, owns, profile.arr("skins")?.firstOrNull()?.jsonObject?.str("url"))
     }
+}
+
+/**
+ * Minecraft-launcher-compatible Microsoft Live authorization-code flow used by MojoLauncher/Pojav.
+ * The client id is bundled, so players never configure an Azure id. This is a legacy, third-party
+ * launcher compatibility path and Microsoft/Mojang may change or block it without notice.
+ */
+data class MicrosoftWebAuthorization(val url: String, val state: String)
+
+class MicrosoftLegacyAuthenticator(private val http: HttpTransport) {
+    companion object {
+        const val CLIENT_ID = "00000000402b5328"
+        const val CALLBACK_SCHEME = "ms-xal-$CLIENT_ID"
+        const val REDIRECT_URL = "https://login.live.com/oauth20_desktop.srf"
+        const val SCOPE = "service::user.auth.xboxlive.com::MBI_SSL"
+        private const val AUTHORIZE_URL = "https://login.live.com/oauth20_authorize.srf"
+        private const val TOKEN_URL = "https://login.live.com/oauth20_token.srf"
+    }
+
+    private fun enc(value: String) = URLEncoder.encode(value, "UTF-8")
+    private fun form(vararg p: Pair<String, String>) = p.joinToString("&") { "${enc(it.first)}=${enc(it.second)}" }
+
+    fun authorizationRequest(): MicrosoftWebAuthorization {
+        val bytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val state = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        val params = listOf(
+            "client_id" to CLIENT_ID,
+            "response_type" to "code",
+            "scope" to SCOPE,
+            "redirect_url" to REDIRECT_URL,
+            "state" to state,
+        ).joinToString("&") { "${enc(it.first)}=${enc(it.second)}" }
+        return MicrosoftWebAuthorization("$AUTHORIZE_URL?$params", state)
+    }
+
+    fun exchangeCode(code: String): MsaTokens {
+        require(code.isNotBlank() && code.length <= 8192) { "Microsoft returned an invalid sign-in code" }
+        return exchange(
+            "code" to code,
+            "grant_type" to "authorization_code",
+        )
+    }
+
+    fun refresh(refreshToken: String): MsaTokens {
+        require(refreshToken.isNotBlank() && refreshToken.length <= 16_384) { "Stored Microsoft refresh token is invalid; sign in again" }
+        return exchange(
+            "refresh_token" to refreshToken,
+            "grant_type" to "refresh_token",
+        )
+    }
+
+    private fun exchange(grant: Pair<String, String>, type: Pair<String, String>): MsaTokens {
+        val body = form(
+            "client_id" to CLIENT_ID,
+            grant.first to grant.second,
+            type.first to type.second,
+            "redirect_url" to REDIRECT_URL,
+            "scope" to SCOPE,
+        )
+        val (status, response) = http.postText(TOKEN_URL, body, "application/x-www-form-urlencoded")
+        val json = runCatching { parseJsonObject(response, "Microsoft token response") }
+            .getOrElse { throw AuthException("Microsoft returned an unreadable token response (HTTP $status)", it) }
+        if (status !in 200..299) {
+            val reason = json.str("error_description") ?: json.str("error") ?: "HTTP $status"
+            throw AuthException("Microsoft sign-in failed: ${reason.take(240)}")
+        }
+        val access = json.str("access_token") ?: throw AuthException("Microsoft did not return an access token")
+        val refresh = json.str("refresh_token")
+            ?: (if (grant.first == "refresh_token") grant.second else null)
+            ?: throw AuthException("Microsoft did not return a refresh token")
+        return MsaTokens(access, refresh)
+    }
+
+    /** The legacy Live token is sent as the RPS ticket, as in the reference mobile launchers. */
+    fun loginMinecraft(msaAccessToken: String): MinecraftLogin =
+        MicrosoftAuthenticator(http, CLIENT_ID).loginMinecraft(msaAccessToken, rpsTicketPrefix = "")
 }

@@ -1,5 +1,7 @@
 # Building CS Launcher Pro
 
+> **APK policy:** APKs are assembled only by `.github/workflows/android.yml` on GitHub Actions. Do not run `assembleDebug`, `assembleRelease`, or `build` locally. Local Gradle use below is limited to tests and static checks; download installable APKs from the public GitHub Releases page. See `CI_BUILD.md`.
+
 ## 1. Toolchain
 
 `tools/setup_toolchain.sh` installs everything into `/opt/cs-toolchain` (needs network and write access to `/opt`):
@@ -24,21 +26,13 @@ The NDK and CMake versions above are pinned in `app/build.gradle.kts`.
 | Core unit tests (pure JVM, no SDK needed) | `./gradlew :core:test` |
 | Network/integration tests | `./gradlew :core:test -Pintegration` |
 | Host end-to-end (real install + launch on Linux with desktop GL) | `./gradlew :core:hostE2E -Pe2eArgs="1.18.2 $HOME/.cache/cs-e2e docs/evidence launch 768 45"` (args: version, work dir, evidence dir, mode, heap MB, title-screen wait s). On low-memory hosts, run the printed classpath directly, as in `BUILD_AND_TEST_REPORT.md` |
-| Debug APK | `./gradlew :app:assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk` |
-| Release APK (R8) | `./gradlew :app:assembleRelease` → unsigned; sign with your key (`apksigner sign --ks …`) |
 | Android API-level guard | `./gradlew :app:checkAndroidApi` (also runs with `check`) |
 | Lint | `./gradlew :app:lintDebug` → `app/build/reports/lint-results-debug.html` |
-| Install on a device | `adb install -r app/build/outputs/apk/debug/app-debug.apk` |
+| Install a published APK | Download `app-debug.apk` from the latest GitHub Release, then `adb install -r app-debug.apk` |
 
-## 3. Memory on small build machines
+## 3. Memory on small test machines
 
-`gradle.properties` is tuned for a 2 GB host: Gradle heap 1100 MB, in-process Kotlin compiler, and no parallel workers.
-The Android packaging steps (dex merge, R8, lint) still needed **swap** on that host, because without it the kernel OOM-killed the daemon.
-```bash
-sudo fallocate -l 3G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
-./gradlew :app:assembleDebug --max-workers=1
-```
-On a workstation, raise `org.gradle.jvmargs` (e.g. `-Xmx4g`) and remove `--max-workers=1`.
+`gradle.properties` is tuned for a 2 GB host: Gradle heap 1100 MB, in-process Kotlin compiler, and no parallel workers. Local device APK packaging is intentionally not documented or supported; use GitHub Actions for all APK builds.
 
 ## 4. Native code
 
@@ -57,7 +51,7 @@ $CC $F csbridge.c -L/tmp -lcsglfw -llog -ldl -Wl,--no-undefined -o /tmp/libcsbri
 ```
 
 ## 5. Configuration that is intentionally not in the repository
-* **Microsoft sign-in:** an Azure application (client) ID is entered in-app (*Settings → Accounts*).
+* **Microsoft sign-in:** new account login uses a bundled public client identifier and the legacy Live flow; no Client ID is entered by the user. This is unofficial and may be blocked by Microsoft. Previously saved Azure v2 sessions retain their configured refresh path.
 * **CurseForge:** the API key is entered in-app and stored encrypted with an Android Keystore key.
 * **Release signing:** provide your own keystore. No signing secrets are committed.
 * **Java runtime, LWJGL and renderer packs:** imported at runtime. See `COMPATIBILITY.md` §5–6.

@@ -42,7 +42,7 @@ enum class PlayState(val label: String) {
 
 sealed class MsaState {
     data object Idle : MsaState()
-    data class Code(val userCode: String, val uri: String, val expiresAtMs: Long) : MsaState()
+    data class WebLogin(val url: String, val state: String) : MsaState()
     data class Working(val message: String) : MsaState()
     data class Error(val message: String) : MsaState()
     data class Done(val name: String) : MsaState()
@@ -232,11 +232,28 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         if (acc.type != AccountType.MICROSOFT) return acc
         if ((acc.accessTokenExpiresAtMs ?: 0) > System.currentTimeMillis() + 5 * 60_000) return acc
         val refresh = s.accounts.refreshToken(acc.id) ?: throw AuthException("Session for ${acc.username} expired. Sign in again.")
-        val auth = MicrosoftAuthenticator(s.http, settings.value.msaClientId)
-        val tokens = auth.refresh(refresh)
-        val login = auth.loginMinecraft(tokens.accessToken)
+        val useLegacyLive = acc.microsoftAuthFlow == MicrosoftAuthFlow.LEGACY_LIVE ||
+            (acc.microsoftAuthFlow == null && settings.value.msaClientId.isBlank())
+        val tokens: MsaTokens
+        val login: MinecraftLogin
+        val flow: MicrosoftAuthFlow
+        if (useLegacyLive) {
+            val auth = MicrosoftLegacyAuthenticator(s.http)
+            tokens = auth.refresh(refresh)
+            login = auth.loginMinecraft(tokens.accessToken)
+            flow = MicrosoftAuthFlow.LEGACY_LIVE
+        } else {
+            val clientId = settings.value.msaClientId
+            if (clientId.isBlank()) throw AuthException("This saved Microsoft session needs its original app configuration. Sign in again from Accounts.")
+            val auth = MicrosoftAuthenticator(s.http, clientId)
+            tokens = auth.refresh(refresh)
+            login = auth.loginMinecraft(tokens.accessToken)
+            flow = MicrosoftAuthFlow.AZURE_V2
+        }
         s.accounts.storeMicrosoftTokens(acc.id, login.accessToken, tokens.refreshToken)
-        val updated = acc.copy(username = login.name, skinUrl = login.skinUrl, accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000, needsRelogin = false)
+        val updated = acc.copy(username = login.name, skinUrl = login.skinUrl,
+            accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000,
+            needsRelogin = false, microsoftAuthFlow = flow)
         s.accounts.upsert(updated)
         return updated
     }
@@ -408,36 +425,65 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun setActiveAccount(id: String) = io { s.accounts.setActive(id); reload() }
     fun removeAccount(id: String) = io { s.accounts.remove(id); reload() }
 
+    /** Opens the same in-app Microsoft WebView authorization flow used by MojoLauncher/Pojav. */
     fun startMicrosoft() {
         msaJob?.cancel()
-        val clientId = settings.value.msaClientId
-        if (clientId.isBlank()) { _msa.value = MsaState.Error("Enter the Azure application (client) ID in Settings › Accounts first. CS Launcher Pro ships no embedded credentials."); return }
-        msaJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val auth = MicrosoftAuthenticator(s.http, clientId)
-                _msa.value = MsaState.Working("Requesting a sign-in code…")
-                val dc = auth.startDeviceCode()
-                val expires = System.currentTimeMillis() + dc.expiresInSec * 1000L
-                _msa.value = MsaState.Code(dc.userCode, dc.verificationUri, expires)
-                var tokens: MsaTokens? = null
-                while (tokens == null) {
-                    if (System.currentTimeMillis() > expires) throw AuthException("The code expired. Start again.")
-                    delay(dc.intervalSec.coerceAtLeast(2) * 1000L)
-                    tokens = auth.pollDeviceCode(dc)
-                }
-                _msa.value = MsaState.Working("Signing in to Minecraft services…")
-                val login = auth.loginMinecraft(tokens.accessToken)
-                if (!login.ownsGame) throw AuthException("This Microsoft account does not own Minecraft: Java Edition.")
-                val acc = Account("msa-" + login.uuid.replace("-", ""), AccountType.MICROSOFT, login.name, login.uuid, login.xuid,
-                    accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000, skinUrl = login.skinUrl)
-                s.accounts.storeMicrosoftTokens(acc.id, login.accessToken, tokens.refreshToken)
-                s.accounts.upsert(acc); s.accounts.setActive(acc.id)
-                _msa.value = MsaState.Done(login.name)
-                reload()
-            } catch (e: CancellationException) { _msa.value = MsaState.Idle
-            } catch (e: Exception) { _msa.value = MsaState.Error(e.message ?: e.toString()) }
+        _msa.value = try {
+            val request = MicrosoftLegacyAuthenticator(s.http).authorizationRequest()
+            MsaState.WebLogin(request.url, request.state)
+        } catch (e: Exception) {
+            MsaState.Error(e.message ?: "Could not start Microsoft sign-in")
         }
     }
+
+    /** Called only after the login Activity intercepts the expected Microsoft redirect. */
+    fun completeMicrosoft(code: String, returnedState: String?) {
+        val pending = _msa.value as? MsaState.WebLogin
+            ?: run { _msa.value = MsaState.Error("This Microsoft sign-in session is no longer active. Start again."); return }
+        if (returnedState.isNullOrBlank() || returnedState != pending.state) {
+            _msa.value = MsaState.Error("Microsoft sign-in verification did not match. Nothing was saved; please try again.")
+            return
+        }
+        if (code.isBlank()) {
+            _msa.value = MsaState.Error("Microsoft did not return an authorization code. Please try again.")
+            return
+        }
+        _msa.value = MsaState.Working("Finishing Microsoft sign-in and checking Minecraft ownership…")
+        msaJob?.cancel()
+        msaJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val auth = MicrosoftLegacyAuthenticator(s.http)
+                val tokens = auth.exchangeCode(code)
+                val login = auth.loginMinecraft(tokens.accessToken)
+                if (!login.ownsGame) throw AuthException("This Microsoft account does not own Minecraft: Java Edition.")
+                val acc = Account(
+                    id = "msa-" + login.uuid.replace("-", ""),
+                    type = AccountType.MICROSOFT,
+                    username = login.name,
+                    uuid = login.uuid,
+                    xuid = login.xuid,
+                    accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000,
+                    skinUrl = login.skinUrl,
+                    microsoftAuthFlow = MicrosoftAuthFlow.LEGACY_LIVE,
+                )
+                s.accounts.storeMicrosoftTokens(acc.id, login.accessToken, tokens.refreshToken)
+                s.accounts.upsert(acc)
+                s.accounts.setActive(acc.id)
+                _msa.value = MsaState.Done(login.name)
+                reload()
+            } catch (e: CancellationException) {
+                _msa.value = MsaState.Idle
+                throw e
+            } catch (e: Exception) {
+                _msa.value = MsaState.Error(e.message ?: "Microsoft sign-in failed")
+            }
+        }
+    }
+
+    fun failMicrosoftLogin(message: String) {
+        _msa.value = if (message.isBlank()) MsaState.Idle else MsaState.Error(message.take(240))
+    }
+
     fun cancelMicrosoft() { msaJob?.cancel(); _msa.value = MsaState.Idle }
 
     // ------------------------------------------------------------------ OptiFine, modpacks, catalog content

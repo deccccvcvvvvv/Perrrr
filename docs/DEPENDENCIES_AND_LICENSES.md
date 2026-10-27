@@ -69,6 +69,6 @@ the libraries are separate shared objects that can be replaced.
 Component packs carry `license` and `source` fields, and the app shows them before activation.
 
 ## Policy compliance notes
-* No Microsoft, Xbox, CurseForge or other private credentials are embedded. Client IDs and keys are provided by the user or publisher.
+* No Microsoft/Xbox client secret or Ely.by client secret is embedded. The Microsoft legacy flow bundles a public client identifier, which is not a secret and may be blocked by Microsoft. CurseForge API keys remain user-supplied.
 * Offline profiles generate the standard offline UUID. They are labelled as offline and are not presented as a way to play online.
 * "Minecraft" is a trademark of Mojang Synergies AB. This project is not affiliated with Mojang or Microsoft.

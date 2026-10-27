@@ -49,7 +49,7 @@ and a small C native layer (its own GLFW implementation plus an in-process JVM b
   * Rule-based crash classification on real logs.
   * Redacted shareable reports.
   * Safe repairs only; user data is never deleted.
-* **Accounts:** Microsoft device-code sign-in (bring your own Azure client ID), Keystore-encrypted tokens, and clearly labelled offline profiles.
+* **Accounts:** Microsoft legacy launcher-compatible sign-in with no Client ID setup, Ely.by accounts with optional 2FA, Keystore-encrypted sessions, and clearly labelled offline profiles. The bundled Microsoft flow is unofficial and may be blocked or changed by Microsoft.
 * **OptiFine:** opens the official optifine.net page in-app and captures the jar you download (or import a jar). It is patched locally by a headless re-implementation of OptiFine's own installer; the output is byte-identical to the official installer for 1.21.11 HD U J9. OptiFine is never redistributed.
 * **Modpacks:** browse and install Modrinth modpacks (`.mrpack`), or import a `.mrpack` file. Each pack becomes its own profile with Minecraft, its Fabric/Quilt loader and every file installed and hash-checked.
 * **Mod browser:** Mods / Modpacks / Resource packs / Shaders. Results are filtered automatically for the selected profile's version and loader. Shows project icons and an "Installed" badge. Required dependencies are installed automatically, skipping ones already present (including manually added copies). Installing another version replaces the old file.
@@ -63,12 +63,7 @@ and a small C native layer (its own GLFW implementation plus an in-process JVM b
 
 ## Build
 
-```bash
-tools/setup_toolchain.sh                      # JDK 17, SDK 34, NDK r26d, CMake, Gradle → /opt/cs-toolchain
-export JAVA_HOME=/opt/cs-toolchain/jdk17 PATH=$JAVA_HOME/bin:$PATH ANDROID_HOME=/opt/cs-toolchain/sdk
-./gradlew :core:test :app:assembleDebug :app:checkAndroidApi
-```
-Details, memory tuning for small machines, and native build notes: [`docs/BUILD.md`](docs/BUILD.md).
+**APK builds are performed through the repository's GitHub Actions workflow only.** Do not assemble APKs locally. Push to `main` or run the `Android CI` workflow manually; successful `main` runs publish the APK and SHA-256 checksum as a GitHub Release. See [`docs/CI_BUILD.md`](docs/CI_BUILD.md) for the exact steps and release locations. Local setup and native build notes are in [`docs/BUILD.md`](docs/BUILD.md), but they are not the APK release process.
 
 ## Documentation
 * [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): modules, processes, key decisions, data layout

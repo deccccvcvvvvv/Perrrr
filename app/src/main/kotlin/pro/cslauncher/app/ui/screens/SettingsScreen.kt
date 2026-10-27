@@ -174,10 +174,7 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                     LinkButton("Save key", { if (key.isBlank()) Services.secrets.remove("curseforge.apiKey") else Services.secrets.put("curseforge.apiKey", key.trim()); vm.toast("Saved") })
                 }
                 Category.ACCOUNTS -> {
-                    var id by remember { mutableStateOf(s.msaClientId) }
-                    AppTextField(id, { id = it }, "Azure application (client) ID")
-                    Text("Microsoft sign-in uses the official browser/device-code flow. Enter this app's own public-client ID, configured for device-code sign-in and approved for Minecraft services. Do not use another launcher's ID. Passwords stay on Microsoft's page; session tokens are stored encrypted on this device.", color = p.textMuted, fontSize = 11.sp, lineHeight = 13.sp)
-                    LinkButton("Save", { vm.updateSettings { it.copy(msaClientId = id.trim()) }; vm.toast("Saved") })
+                    Text("Microsoft sign-in is available without entering a Client ID. The launcher opens Microsoft's login page in-app and keeps the sign-in session encrypted on this device. This is a legacy launcher-compatibility flow and Microsoft may change or block it.", color = p.textMuted, fontSize = 11.sp, lineHeight = 13.sp)
                     LinkButton("Manage accounts", { onOpen(Overlay.Accounts) })
                 }
                 Category.STORAGE -> StorageSection(vm)

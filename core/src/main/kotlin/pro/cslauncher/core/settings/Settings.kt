@@ -81,7 +81,7 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val touch: TouchSettings = TouchSettings(),
     val cursor: CursorSettings = CursorSettings(),
     val recording: RecordingSettings = RecordingSettings(),
-    val msaClientId: String = "",             // Azure app (client) id approved for Minecraft services; never a secret
+    val msaClientId: String = "",             // Kept for refreshing existing Azure v2 accounts; new users are not asked for an ID.
     val verboseDiagnostics: Boolean = false,
     val keepLauncherLogsDays: Int = 14,
 ) {

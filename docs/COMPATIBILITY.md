@@ -83,9 +83,8 @@ No emulator is possible without KVM, and no physical device was attached. On-dev
 * Keystore.
 * A live Microsoft sign-in.
 
-### B5 — Microsoft sign-in client ID (user/publisher action)
-Microsoft authentication uses the OAuth device-code flow and needs an Azure application (client) ID with Xbox Live permissions.
-No ID is embedded. Enter it under *Settings → Accounts*. Offline profiles stay available and are clearly labelled as offline.
+### B5 — Microsoft sign-in (legacy launcher compatibility)
+New sign-ins use the bundled public client ID and legacy `login.live.com` authorization-code flow in an in-app WebView, so no ID entry is required. This is unofficial third-party launcher compatibility behavior; Microsoft may block/change it without notice. Previously saved Azure v2 accounts retain their original refresh path. Offline profiles remain clearly labelled as offline.
 
 ### B6 — CurseForge API key (optional)
 CurseForge search requires a key from the CurseForge console. It is entered by the user and stored encrypted, and nothing is
