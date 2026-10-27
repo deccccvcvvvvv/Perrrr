@@ -35,6 +35,7 @@ import pro.cslauncher.app.ui.Tab
 import pro.cslauncher.app.ui.theme.*
 import pro.cslauncher.core.account.AccountType
 import pro.cslauncher.core.profile.Profile
+import java.time.Instant
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -111,7 +112,7 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                 PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state, { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() })
                 if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
                 QuickActions(onTab, onOpen)
-                BottomStatus(selected, canPlay, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb)
+                BottomStatus(selected, canPlay, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb ?: vm.recommendedHeapMb())
                 NewsSection(recentNews, feedLoading, feedError, refreshFeed, { newsDialog = it })
             }
         }
@@ -157,7 +158,7 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                     }
                     if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
                     QuickActions(onTab, onOpen)
-                    BottomStatus(selected, canPlay, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb)
+                    BottomStatus(selected, canPlay, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb ?: vm.recommendedHeapMb())
                 }
 
                 Column(Modifier.weight(0.92f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(Color(0xE90B1016)).padding(12.dp)) {
