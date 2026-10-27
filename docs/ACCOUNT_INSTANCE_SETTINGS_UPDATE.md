@@ -8,14 +8,14 @@
 - Creation offers full manifest search, snapshots, supported loader versions, icons, Java selection, RAM slider/presets, renderer, shared/isolated game directory and JVM arguments. IDs remain independent UUIDs. No Forge/NeoForge installer processors have been added; those loaders remain explicitly unsupported.
 - Home lists compact instances with actual job progress, selection and editing. Profiles include install/retry and repair. Launching incomplete instances is blocked. Active installations block profile editing/deletion to avoid losing changes or resurrecting removed instances.
 - Instance editing adds actual fullscreen/resolution settings and directory-change warning. Changing folders preserves the old files; it does not migrate them.
-- General, Memory, Rendering and Game Launch settings sections extend the existing categorized settings. RAM, Java, renderer and JVM defaults are copied only at creation. Download attempts/concurrency configure the actual download engine. Rendering displays device/component status against an explicitly identified reference Minecraft version; actual-version checks remain in launch preflight.
+- Startup-screen preference and default fullscreen/resolution are persisted and applied. General, Memory, Rendering and Game Launch settings sections extend the existing categorized settings. RAM, Java, renderer and JVM defaults are copied only at creation. Download attempts/concurrency configure the actual download engine. Rendering displays device/component status against an explicitly identified reference Minecraft version; actual-version checks remain in launch preflight.
 - New serialized properties have defaults; existing profiles/accounts/settings do not need recreation. No worlds/mods are removed by these changes.
 
 ## Boundaries / not implemented in this update
 
 - No Android SAF tree-to-native game-directory adapter: shared/isolated app-specific directories remain the safe options. Arbitrary document-provider folders cannot be passed to the in-process JVM as filesystem paths.
 - No new Forge, NeoForge or LWJGL 2 compatibility implementation.
-- No UI language packs, light theme, UI scaling, startup-screen preference, custom profile-image picker, automatic transfer of existing game files or global resolution/fullscreen defaults.
+- No UI language packs, light theme, UI scaling, custom profile-image picker or automatic transfer of existing game files.
 - No durable OS-scheduled download worker: foreground jobs survive navigation, not process death. Persistent instance status and partial files support explicit retry after restart. Queue progress/history itself remains process-local.
 - Ely.by skins and device sign-in/gameplay have not been verified on a physical Android device. Microsoft authentication still requires publisher approval/client configuration.
 

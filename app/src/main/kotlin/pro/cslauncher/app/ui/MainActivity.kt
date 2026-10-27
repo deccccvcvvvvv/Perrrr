@@ -94,7 +94,7 @@ private sealed interface Screen { data class T(val tab: Tab) : Screen; data clas
 
 @Composable
 fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initialTab: Tab = Tab.HOME, initialOverlay: Overlay? = null) {
-    var tab by rememberSaveable { mutableStateOf(initialTab) }
+    var tab by rememberSaveable { mutableStateOf(if (initialTab == Tab.HOME) runCatching { Tab.valueOf(vm.settings.value.startupScreen) }.getOrDefault(Tab.HOME) else initialTab) }
     var overlay by remember { mutableStateOf(initialOverlay) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val jobs by vm.jobs.collectAsStateWithLifecycle()

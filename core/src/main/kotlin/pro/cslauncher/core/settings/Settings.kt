@@ -71,6 +71,10 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val defaultMemoryMb: Int? = null,
     val defaultRuntimeId: String? = null,
     val defaultJvmArgs: String = "",
+    val defaultFullscreen: Boolean = false,
+    val defaultResolutionWidth: Int? = null,
+    val defaultResolutionHeight: Int? = null,
+    val startupScreen: String = "HOME",
 
     val performancePreset: PerformancePreset = PerformancePreset.BALANCED,
     val frameRateLimit: Int = 0,              // 0 = unlimited (game setting is authoritative)

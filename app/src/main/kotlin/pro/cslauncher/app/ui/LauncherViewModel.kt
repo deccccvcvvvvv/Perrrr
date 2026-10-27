@@ -288,9 +288,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ profiles
     fun select(id: String) = io { s.profiles.select(id); reload() }
+    fun playProfile(id: String) = io {
+        s.profiles.select(id)
+        _ui.update { it.copy(profiles = s.profiles.load()) }
+        reloadInstalled()
+        withContext(Dispatchers.Main) { primaryAction() }
+    }
     fun saveProfile(p: Profile) = io {
         require(jobs.value["task:profile-${p.id}"]?.active != true) { "Wait for installation to finish before editing this instance" }
-        require(p.memoryMb == null || p.memoryMb <= maxHeapMb()) { "Memory exceeds the device safe limit" }
+        require((p.memoryMb ?: 512) <= maxHeapMb()) { "Memory exceeds the device safe limit" }
         val problems = ProfileValidator.validate(p)
         if (problems.isNotEmpty()) { toast(problems.joinToString { it.message }); return@io }
         s.profiles.upsert(p); reload()
@@ -304,6 +310,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val p = Profile(name = name.trim().ifBlank { "$versionId ${loader.name.lowercase().replaceFirstChar(Char::uppercase)}" },
             versionId = versionId, memoryMb = memoryMb, runtimeId = runtimeId,
             rendererId = rendererId, iconKey = icon, jvmArgs = jvmArgs, gameDirMode = directory,
+            fullscreen = settings.value.defaultFullscreen,
+            resolutionWidth = settings.value.defaultResolutionWidth,
+            resolutionHeight = settings.value.defaultResolutionHeight,
             loader = if (loader == LoaderType.VANILLA) null else LoaderSpec(loader, loaderVersion ?: ""),
             installationState = "pending")
         val errors = ProfileValidator.validate(p)

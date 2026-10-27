@@ -71,6 +71,7 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
               Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 when (open) {
                 Category.GENERAL -> {
+                    ChoiceRow("Startup screen", listOf("HOME", "PROFILES", "BROWSE", "DOWNLOADS", "SETTINGS"), s.startupScreen, label = { it.lowercase().replaceFirstChar(Char::uppercase) }) { v -> vm.updateSettings { it.copy(startupScreen = v) } }
                     SwitchRow("Show snapshots", "Include snapshots in the version selector", s.showSnapshots) { v -> vm.updateSettings { it.copy(showSnapshots = v) } }
                     SwitchRow("Historical versions", "Metadata only; the core still validates launch support", s.showHistorical) { v -> vm.updateSettings { it.copy(showHistorical = v) } }
                     LinkButton("Refresh version metadata", { vm.refreshManifest(true) })
@@ -95,6 +96,11 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                     Text("Compatibility shown for Minecraft 1.21.11. Other versions are checked at launch. Missing components can be imported in Runtimes.", color = p.textMuted, fontSize = 11.sp)
                 }
                 Category.LAUNCH -> {
+                    SwitchRow("Default fullscreen", "New instances only", s.defaultFullscreen) { v -> vm.updateSettings { it.copy(defaultFullscreen = v) } }
+                    ChoiceRow("Default resolution", listOf("Device", "854×480", "1280×720", "1920×1080"), s.defaultResolutionWidth?.let { "${it}×${s.defaultResolutionHeight}" } ?: "Device", label = { it }) { value ->
+                        val dims = value.split("×")
+                        vm.updateSettings { it.copy(defaultResolutionWidth = dims.firstOrNull()?.toIntOrNull(), defaultResolutionHeight = dims.getOrNull(1)?.toIntOrNull()) }
+                    }
                     var args by remember(s.defaultJvmArgs) { mutableStateOf(s.defaultJvmArgs) }
                     PixelTextField(args, { args = it }, label = "Default JVM arguments (new instances)", singleLine = false)
                     val errors = pro.cslauncher.core.profile.JvmArgs.validate(pro.cslauncher.core.profile.JvmArgs.tokenize(args)).filter { it.severity == pro.cslauncher.core.profile.JvmArgs.Severity.ERROR }

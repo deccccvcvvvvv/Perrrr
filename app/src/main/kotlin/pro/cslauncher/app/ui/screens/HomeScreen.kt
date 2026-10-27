@@ -55,8 +55,9 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
                                 ?: if (instance.installationState == "existing") { if (instance.effectiveVersionId in ui.installed) "Ready" else "Not installed" } else instance.installationState,
                                 color = p.textSecondary, fontSize = 10.sp)
                         }
-                        PixelButton("Select", { vm.select(instance.id) }, height = 30.dp, fontSize = 10.sp)
+                        PixelButton(if (instance.effectiveVersionId in ui.installed && instance.installationState !in listOf("pending", "installing", "incomplete")) "Play" else "Install", { vm.playProfile(instance.id) }, height = 30.dp, fontSize = 10.sp, enabled = job?.active != true && !ui.launching && !ui.gameRunning)
                         PixelIconButton("edit", "Edit instance", { onOpen(Overlay.EditProfile(instance.id)) }, size = 30.dp)
+                        PixelIconButton("more", "Instance actions", { onTab(Tab.PROFILES) }, size = 30.dp)
                     }
                     if (job?.active == true) PixelProgress(job.fraction)
                 }
