@@ -101,6 +101,7 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
           V1_APK="${APK%.apk}-v1.apk"
           ALIGNED_APK="${APK%.apk}-aligned.apk"
+          zip -d "$APK" 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF'
           jarsigner -keystore app/release.keystore -storetype JKS \
             -storepass "$RELEASE_STORE_PASSWORD" -keypass "$RELEASE_KEY_PASSWORD" \
             -digestalg SHA-256 -sigalg SHA256withRSA -signedjar "$V1_APK" "$APK" "$RELEASE_KEY_ALIAS"
