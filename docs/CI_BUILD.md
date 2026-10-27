@@ -27,8 +27,8 @@ fine; compiling/packaging the APK happens only inside the GitHub Actions workflo
 8. `tools/check_bundle_needed.py` verifies every ELF `DT_NEEDED`, and the APK contents are asserted.
 9. On a successful build from `main` (push or manual dispatch), the workflow creates a published
    GitHub Release tagged `cslauncher-build-<run-number>-<short-sha>` and attaches `app-debug.apk`
-   plus its SHA-256 checksum. The APK is **not** uploaded as a workflow artifact. The repository is
-   private, so releases are visible only to people with repository access. Pull requests still run
+   plus its SHA-256 checksum. The APK is **not** uploaded as a workflow artifact. Release visibility
+   follows repository visibility; this target repository is public. Pull requests still run
    build/checks but never publish a release.
 10. On failure, `build-reports` (compiler/test/lint output) is uploaded and a summary is written to
     the run's job summary. No APK or release is published when a step fails.
@@ -40,7 +40,7 @@ source build is not required for every push and a failure there cannot block an 
 
 ## Triggering
 
-- Automatic build on push to `main` and on pull requests. A successful `main` push publishes a private GitHub Release; a pull request only builds/checks.
+- Automatic build on push to `main` and on pull requests. A successful `main` push publishes a GitHub Release; a pull request only builds/checks.
 - Manual: **Actions → Android build → Run workflow**, optional `rebuild_natives`. Dispatching from `main` publishes a release after a successful build; dispatching from another branch does not.
 - API: `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` with `{"ref":"main"}`. A successful main dispatch publishes the release.
 
@@ -50,15 +50,11 @@ When third-party natives/runtimes change, run the source jobs with `rebuild_nati
 release asset, then update `PAYLOAD_TAG`, `PAYLOAD_APK` and `PAYLOAD_SHA256` in the workflow's
 `env:` block together. The checksum gate makes a wrong or tampered asset fail loudly.
 
-## Known external blocker (account-level)
+## Verified target build
 
-GitHub currently refuses to start **any** hosted runner for this repository. Every job fails within
-2–3 seconds with `runner_id: 0` and zero steps; the check-run annotation reads:
+On 2026-10-27, public repository `deccccvcvvvvv/Perrrr` completed GitHub Actions run #1
+successfully: unit tests, API-level check, lint, APK assembly, native dependency checks, and release
+publication all passed. The resulting APK is published as `cslauncher-build-1-fb4c6ec`.
 
-> "The job was not started because recent account payments have failed or your spending limit needs
-> to be increased. Please check the 'Billing & plans' section in your settings."
-
-This is a billing/spending-limit problem on the GitHub account, **not** a workflow or source error.
-It cannot be fixed from the repository. Once the payment method / spending limit is corrected in
-*Settings → Billing & plans*, re-run the workflow (or push again) and the `build` job will execute.
-Until then no GitHub Actions build or release can complete, and none should be claimed.
+The earlier private source repository had an account-level Actions billing/spending-limit block;
+that was not a source-code failure. The target repository's public Actions run succeeded.
