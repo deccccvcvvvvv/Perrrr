@@ -118,7 +118,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun playState(st: UiState, jobs: Map<String, InstallJob>): PlayState {
         val p = st.selected ?: return PlayState.NO_PROFILE
         val v = p.effectiveVersionId
-        val job = jobs[v]?.takeIf { it.active }
+        val job = (jobs["task:profile-${p.id}"] ?: jobs[v])?.takeIf { it.active }
         if (st.gameRunning) return if (st.gameState == LaunchState.RUNNING) PlayState.PLAYING else PlayState.LAUNCHING
         if (job != null) return when {
             job.kind == JobKind.VERIFY_REPAIR || job.stage.contains("Verif", true) -> PlayState.VERIFYING
@@ -127,7 +127,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (st.launching) return when (st.launch?.state) { LaunchState.INITIALIZING_GAME, LaunchState.LOADING_GAME -> PlayState.LAUNCHING; else -> PlayState.PREPARING }
         if (v in st.needsRepair) return PlayState.REPAIR_REQUIRED
-        if (v !in st.installed) return PlayState.INSTALL
+        if (p.installationState in listOf("pending", "installing", "incomplete") || v !in st.installed) return PlayState.INSTALL
         if (st.failure != null) return PlayState.LAUNCH_FAILED
         return PlayState.READY
     }
@@ -135,7 +135,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun primaryAction() {
         val st = _ui.value; val p = st.selected ?: return
         when (playState(st, jobs.value)) {
-            PlayState.INSTALL -> install(p.effectiveVersionId)
+            PlayState.INSTALL -> installProfile(p.id)
             PlayState.REPAIR_REQUIRED -> repair(p.effectiveVersionId)
             PlayState.READY, PlayState.LAUNCH_FAILED -> play()
             else -> {}
@@ -161,6 +161,9 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun play() {
         val st = _ui.value; val p = st.selected ?: return
         if (st.launching || gameProcessAlive()) { toast("The game is already running"); return }
+        if (jobs.value["task:profile-${p.id}"]?.active == true || p.installationState in listOf("pending", "installing", "incomplete")) {
+            toast("Complete the instance installation first"); return
+        }
         val acc = st.activeAccount ?: run { toast("Add an account first (Accounts)"); return }
         if (!LaunchLocks.tryAcquire(p.id)) return
         _ui.update { it.copy(launching = true, failure = null, launch = null) }
@@ -171,9 +174,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 val account = ensureFreshSession(acc)
                 val dm = getApplication<Application>().resources.displayMetrics
                 val scale = p.renderScale.coerceIn(0.3f, 1f)
-                val w = (maxOf(dm.widthPixels, dm.heightPixels) * scale).toInt(); val h = (minOf(dm.widthPixels, dm.heightPixels) * scale).toInt()
+                val w = p.resolutionWidth ?: (maxOf(dm.widthPixels, dm.heightPixels) * scale).toInt(); val h = p.resolutionHeight ?: (minOf(dm.widthPixels, dm.heightPixels) * scale).toInt()
                 val shim = File(getApplication<Application>().applicationInfo.nativeLibraryDir, "libcsglfw.so").toPath()
-                val req = LaunchRequest(p, { s.accounts.session(account, settings.value.msaClientId) }, { rv -> s.device.rendererEnvironment(rv) }, facts, w, h,
+                val launchProfile = if (account.type == AccountType.ELY_BY) {
+                    val agent = ElyAuthenticator(s.http).ensureAgent(s.dirs.cache.resolve("auth"))
+                    p.copy(jvmArgs = p.jvmArgs + " \"-javaagent:${agent.toAbsolutePath()}=https://authserver.ely.by\"")
+                } else p
+                val req = LaunchRequest(launchProfile, { s.accounts.session(account, settings.value.msaClientId) }, { rv -> s.device.rendererEnvironment(rv) }, facts, w, h,
                     glfwShim = shim, failedRendererFingerprints = failedFingerprints(), launcherVersion = BuildConfig.VERSION_NAME)
                 val prepared = s.coordinator.prepare(req, sm)
                 prepared.warnings.forEach { pro.cslauncher.core.util.CsLog.w("Launch", it.message) }
@@ -205,6 +212,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Refreshes an expired Microsoft session with the stored refresh token before launching. */
     private fun ensureFreshSession(acc: Account): Account {
+        if (acc.type == AccountType.ELY_BY) {
+            val (token, client) = s.accounts.elyTokens(acc.id)
+            val login = ElyAuthenticator(s.http).refresh(token, client)
+            s.accounts.storeElyTokens(login.account.id, login.token, login.client)
+            s.accounts.upsert(login.account)
+            return login.account
+        }
         if (acc.type != AccountType.MICROSOFT) return acc
         if ((acc.accessTokenExpiresAtMs ?: 0) > System.currentTimeMillis() + 5 * 60_000) return acc
         val refresh = s.accounts.refreshToken(acc.id) ?: throw AuthException("Session for ${acc.username} expired. Sign in again.")
@@ -212,7 +226,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val tokens = auth.refresh(refresh)
         val login = auth.loginMinecraft(tokens.accessToken)
         s.accounts.storeMicrosoftTokens(acc.id, login.accessToken, tokens.refreshToken)
-        val updated = acc.copy(accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000, needsRelogin = false)
+        val updated = acc.copy(username = login.name, skinUrl = login.skinUrl, accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000, needsRelogin = false)
         s.accounts.upsert(updated)
         return updated
     }
@@ -275,30 +289,88 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     // ------------------------------------------------------------------ profiles
     fun select(id: String) = io { s.profiles.select(id); reload() }
     fun saveProfile(p: Profile) = io {
+        require(jobs.value["task:profile-${p.id}"]?.active != true) { "Wait for installation to finish before editing this instance" }
+        require(p.memoryMb == null || p.memoryMb <= maxHeapMb()) { "Memory exceeds the device safe limit" }
         val problems = ProfileValidator.validate(p)
         if (problems.isNotEmpty()) { toast(problems.joinToString { it.message }); return@io }
         s.profiles.upsert(p); reload()
     }
-    fun createProfile(name: String, versionId: String, loader: LoaderType) = io {
-        var p = Profile(name = name.trim().ifBlank { versionId }, versionId = versionId)
-        if (loader != LoaderType.VANILLA) {
-            val li = LoaderInstaller(s.http, s.dirs)
-            val support = li.support(loader); if (!support.supported) { toast(support.reason); return@io }
-            val v = li.versions(loader, versionId).firstOrNull { it.stable } ?: li.versions(loader, versionId).firstOrNull() ?: run { toast("No $loader version for $versionId"); return@io }
-            val id = li.install(loader, versionId, v.version)
-            p = p.copy(loader = LoaderSpec(loader, v.version), launchVersionId = id)
-        }
+    fun createProfile(name: String, versionId: String, loader: LoaderType,
+        memoryMb: Int? = settings.value.defaultMemoryMb,
+        runtimeId: String? = settings.value.defaultRuntimeId,
+        rendererId: String = settings.value.defaultRenderer,
+        icon: String = "grass", jvmArgs: String = settings.value.defaultJvmArgs,
+        directory: GameDirMode = GameDirMode.ISOLATED, loaderVersion: String? = null) = io {
+        val p = Profile(name = name.trim().ifBlank { "$versionId ${loader.name.lowercase().replaceFirstChar(Char::uppercase)}" },
+            versionId = versionId, memoryMb = memoryMb, runtimeId = runtimeId,
+            rendererId = rendererId, iconKey = icon, jvmArgs = jvmArgs, gameDirMode = directory,
+            loader = if (loader == LoaderType.VANILLA) null else LoaderSpec(loader, loaderVersion ?: ""),
+            installationState = "pending")
+        val errors = ProfileValidator.validate(p)
+        require(errors.isEmpty()) { errors.joinToString { it.message } }
+        require(memoryMb == null || memoryMb <= maxHeapMb()) { "Memory exceeds the device's safe limit" }
         s.profiles.upsert(p); s.profiles.select(p.id); reload()
+        installProfile(p.id)
+    }
+
+    /** All dependencies and runtime provisioning share the foreground installation queue. */
+    fun installProfile(id: String) = io {
+        val original = s.profiles.load().profiles.first { it.id == id }
+        InstallManager.startTask(getApplication(), "profile-$id", "${original.name} · ${original.versionId}", { ok ->
+            io {
+                val current = s.profiles.load().profiles.firstOrNull { it.id == id }
+                if (current != null) s.profiles.upsert(current.copy(installationState = if (ok) "ready" else "incomplete",
+                    installationError = if (ok) null else "Installation incomplete. Open Downloads for details and retry from Profiles."))
+                reload()
+            }
+        }) {
+            var p = s.profiles.load().profiles.first { it.id == id }
+            s.profiles.upsert(p.copy(installationState = "installing")); reload()
+            progress("Validating directory")
+            val dir = p.gameDir(s.dirs)
+            Files.createDirectories(dir)
+            require(Files.isWritable(dir)) { "Instance directory is not writable" }
+            require(Files.getFileStore(dir).usableSpace > 256L * 1024 * 1024) { "Less than 256 MB free in instance storage" }
+            val manifest = s.manifests.load()
+            installVersion(p.versionId, manifest)
+            if (p.loader != null) {
+                val li = LoaderInstaller(s.http, s.dirs)
+                require(li.support(p.loader!!.type).supported) { li.support(p.loader!!.type).reason }
+                val versions = li.versions(p.loader!!.type, p.versionId)
+                val selected = p.loader!!.version.takeIf { it.isNotBlank() }
+                    ?: versions.firstOrNull { it.stable }?.version ?: versions.firstOrNull()?.version
+                    ?: error("No compatible loader for ${p.versionId}")
+                require(versions.any { it.version == selected }) { "Loader $selected is incompatible with ${p.versionId}" }
+                progress("Installing loader", selected)
+                val launchId = li.install(p.loader!!.type, p.versionId, selected)
+                p = p.copy(loader = p.loader!!.copy(version = selected), launchVersionId = launchId)
+                s.profiles.upsert(p.copy(installationState = "installing")); reload()
+                installVersion(launchId, manifest)
+            }
+            val resolved = s.installer.resolve(p.effectiveVersionId, manifest)
+            val required = pro.cslauncher.core.runtime.RuntimeSelector.requiredMajorFor(resolved.meta.javaMajor)
+            s.provisioner.ensureRuntime(required) { progress("Java runtime", it) }
+            val choice = pro.cslauncher.core.runtime.RuntimeSelector.select(required, resolved.meta.usesLwjgl3,
+                s.runtimes.list(), s.platform, p.runtimeId)
+            require(choice.runtime != null) { choice.reason }
+            s.profiles.upsert(p.copy(installationState = "ready", installationError = null)); reload()
+            true
+        }
     }
     fun duplicate(id: String, name: String) = io { s.profiles.duplicate(id, name); reload() }
     fun deletionPlan(id: String) = s.profiles.planDeletion(id)
-    fun delete(id: String, deleteFiles: Boolean) = io { s.profiles.delete(id, deleteFiles); reload() }
+    fun delete(id: String, deleteFiles: Boolean) = io { require(jobs.value["task:profile-$id"]?.active != true) { "Cancel or finish installation before removing this instance" }; s.profiles.delete(id, deleteFiles); reload() }
     fun exportProfile(id: String): String = s.profiles.export(id)
     fun importProfile(text: String) = io { s.profiles.import(text); reload() }
     fun maxHeapMb() = PerformanceAdvisor.maxHeapMb(facts)
     fun recommendedHeapMb() = PerformanceAdvisor.recommendedHeapMb(facts)
 
     // ------------------------------------------------------------------ accounts
+    fun addEly(username: String, password: String, otp: String) = io {
+        val login = ElyAuthenticator(s.http).login(username.trim(), password, otp.trim())
+        s.accounts.storeElyTokens(login.account.id, login.token, login.client)
+        s.accounts.upsert(login.account); s.accounts.setActive(login.account.id); reload()
+    }
     fun addOffline(name: String) = io { s.accounts.addOffline(name.trim()); reload() }
     fun setActiveAccount(id: String) = io { s.accounts.setActive(id); reload() }
     fun removeAccount(id: String) = io { s.accounts.remove(id); reload() }
@@ -324,7 +396,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 val login = auth.loginMinecraft(tokens.accessToken)
                 if (!login.ownsGame) throw AuthException("This Microsoft account does not own Minecraft: Java Edition.")
                 val acc = Account("msa-" + login.uuid.replace("-", ""), AccountType.MICROSOFT, login.name, login.uuid, login.xuid,
-                    accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000)
+                    accessTokenExpiresAtMs = System.currentTimeMillis() + login.expiresInSec * 1000, skinUrl = login.skinUrl)
                 s.accounts.storeMicrosoftTokens(acc.id, login.accessToken, tokens.refreshToken)
                 s.accounts.upsert(acc); s.accounts.setActive(acc.id)
                 _msa.value = MsaState.Done(login.name)
@@ -431,6 +503,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ------------------------------------------------------------------ settings & activity
-    fun updateSettings(f: (LauncherSettings) -> LauncherSettings) = io { s.settings.update(f) }
+    fun updateSettings(f: (LauncherSettings) -> LauncherSettings) = io {
+        s.settings.update(f)
+        val current = s.settings.state.value
+        s.downloads.configure(current.downloadConcurrency.coerceIn(1, 16), current.downloadAttempts.coerceIn(1, 6))
+    }
     fun clearActivity() = io { s.activity.clear(); reload() }
 }

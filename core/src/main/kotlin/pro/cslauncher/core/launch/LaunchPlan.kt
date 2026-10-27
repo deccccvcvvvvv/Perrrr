@@ -160,6 +160,7 @@ class LaunchPlanner(private val dirs: LauncherDirs, private val platform: Platfo
         game += if (meta.usesModernArguments && meta.gameArguments.isNotEmpty()) ArgumentBuilder.expand(meta.gameArguments, platform, features).map(::sub)
                 else ArgumentBuilder.legacy(meta.legacyArguments ?: throw LaunchPlanException("Version ${meta.id} defines no game arguments")).map(::sub)
         if (features.hasCustomResolution && meta.gameArguments.isEmpty()) game += listOf("--width", input.width.toString(), "--height", input.height.toString())
+        if (p.fullscreen && "--fullscreen" !in game) game += "--fullscreen"
         game += JvmArgs.tokenize(p.gameArgs)
 
         if (unresolved.isNotEmpty()) throw LaunchPlanException("Unresolved launch placeholders: ${unresolved.joinToString()}")

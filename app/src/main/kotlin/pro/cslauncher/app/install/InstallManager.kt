@@ -36,6 +36,7 @@ object InstallManager {
     private val _jobs = MutableStateFlow<Map<String, InstallJob>>(emptyMap())
     val jobs: StateFlow<Map<String, InstallJob>> = _jobs
     private val running = HashMap<String, Job>()
+    private val queue = kotlinx.coroutines.sync.Semaphore(1)
 
     private fun set(v: String, f: (InstallJob) -> InstallJob) = _jobs.update { m -> m[v]?.let { m + (v to f(it)) } ?: m }
 
@@ -45,7 +46,10 @@ object InstallManager {
         ContextCompat.startForegroundService(ctx, Intent(ctx, InstallService::class.java))
         running[versionId] = scope.launch {
             var ok = false
+            var acquired = false
             try {
+                queue.acquire(); acquired = true
+
                 set(versionId) { it.copy(status = JobStatus.RUNNING, stage = "Reading version list") }
                 val manifest = runCatching { Services.manifests.load() }.getOrNull()
                 if (kind == JobKind.INSTALL) {
@@ -80,6 +84,7 @@ object InstallManager {
             } catch (e: Exception) {
                 set(versionId) { it.copy(status = JobStatus.FAILED, message = e.message ?: e.toString(), endedAtMs = System.currentTimeMillis()) }
             } finally {
+                if (acquired) queue.release()
                 synchronized(this@InstallManager) { running.remove(versionId) }
                 withContext(NonCancellable + Dispatchers.Main) { onFinished(ok) }
             }
@@ -124,7 +129,10 @@ object InstallManager {
         ContextCompat.startForegroundService(ctx, Intent(ctx, InstallService::class.java))
         running[key] = scope.launch {
             var ok = false
+            var acquired = false
             try {
+                queue.acquire(); acquired = true
+
                 set(key) { it.copy(status = JobStatus.RUNNING, stage = "Starting") }
                 ok = TaskScope(key).work()
                 set(key) { it.copy(status = if (ok) JobStatus.DONE else JobStatus.FAILED, endedAtMs = System.currentTimeMillis(), stage = if (ok) "Done" else it.stage) }
@@ -134,6 +142,7 @@ object InstallManager {
                 pro.cslauncher.core.util.CsLog.w("Task", "$title failed: ${e.message}")
                 set(key) { it.copy(status = JobStatus.FAILED, message = e.message ?: e.toString(), endedAtMs = System.currentTimeMillis()) }
             } finally {
+                if (acquired) queue.release()
                 synchronized(this@InstallManager) { running.remove(key) }
                 withContext(NonCancellable + Dispatchers.Main) { onFinished(ok) }
             }

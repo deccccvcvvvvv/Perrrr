@@ -34,6 +34,10 @@ import pro.cslauncher.core.storage.StorageEntry
 import java.nio.file.Files
 
 private enum class Category(val title: String, val subtitle: String, val icon: String = "settings") {
+    GENERAL("General", "Version metadata and preferences", "settings"),
+    MEMORY("Memory", "Defaults for new instances", "chart"),
+    RENDERING("Rendering", "Compatibility and default renderer", "bolt"),
+    LAUNCH("Game launch", "Defaults for new instances", "terminal"),
     APPEARANCE("Appearance", "Theme, full screen, motion", "sun"), PERFORMANCE("Performance", "Presets, renderer, frame limit", "bolt"),
     CONTROLS("Controls", "Touch, layouts, physical input", "gamepad"), CURSOR("Cursor", "Mode, shape, size, sensitivity", "mouse"),
     RECORDING("Recording", "Clean video, quality, audio", "record"), RUNTIMES("Runtimes", "Java, LWJGL and renderer packs", "terminal"),
@@ -66,6 +70,38 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
             CsCard(Modifier.fillMaxSize()) {
               Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 when (open) {
+                Category.GENERAL -> {
+                    SwitchRow("Show snapshots", "Include snapshots in the version selector", s.showSnapshots) { v -> vm.updateSettings { it.copy(showSnapshots = v) } }
+                    SwitchRow("Historical versions", "Metadata only; the core still validates launch support", s.showHistorical) { v -> vm.updateSettings { it.copy(showHistorical = v) } }
+                    LinkButton("Refresh version metadata", { vm.refreshManifest(true) })
+                }
+                Category.MEMORY -> {
+                    SwitchRow("Automatic memory for new instances", "Recommended ${vm.recommendedHeapMb()} MB; existing instances stay unchanged", s.defaultMemoryMb == null) { v -> vm.updateSettings { it.copy(defaultMemoryMb = if (v) null else vm.recommendedHeapMb()) } }
+                    s.defaultMemoryMb?.let { mb -> SliderRow("Default allocation", mb.toFloat().coerceIn(512f, vm.maxHeapMb().toFloat().coerceAtLeast(513f)), 512f..vm.maxHeapMb().toFloat().coerceAtLeast(513f), format = { "${it.toInt()} MB" }) { v -> vm.updateSettings { it.copy(defaultMemoryMb = v.toInt() / 64 * 64) } } }
+                    Text("Device-safe maximum ${vm.maxHeapMb()} MB reserves memory for Android and rendering.", color = p.textSecondary, fontSize = 12.sp)
+                }
+                Category.RENDERING -> {
+                    Text("Default for newly created instances only. Per-instance selection is in Profile Edit; launch preflight validates the actual Minecraft version.", color = p.textSecondary, fontSize = 12.sp)
+                    ChoiceRow("Default", listOf("auto") + Services.renderers.backends.map { it.id }, s.defaultRenderer, label = { it }) { v -> vm.updateSettings { it.copy(defaultRenderer = v) } }
+                    var descriptions by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+                    LaunchedEffect(Unit) {
+                        descriptions = withContext(Dispatchers.IO) {
+                            val env = pro.cslauncher.core.renderer.RendererEnvironment(Services.platform, android.os.Build.VERSION.SDK_INT,
+                                Services.device.glesVersion, Services.device.vulkanApi, Services.components.availableLibraries(Services.abi), "1.21.11", true, false)
+                            Services.renderers.backends.map { backend -> backend.displayName to backend.status(env).let { "${it.state}: ${it.reason}" } }
+                        }
+                    }
+                    descriptions.forEach { (title, detail) -> SectionTitle(title); Text(detail, color = p.textSecondary, fontSize = 12.sp) }
+                    Text("Compatibility shown for Minecraft 1.21.11. Other versions are checked at launch. Missing components can be imported in Runtimes.", color = p.textMuted, fontSize = 11.sp)
+                }
+                Category.LAUNCH -> {
+                    var args by remember(s.defaultJvmArgs) { mutableStateOf(s.defaultJvmArgs) }
+                    PixelTextField(args, { args = it }, label = "Default JVM arguments (new instances)", singleLine = false)
+                    val errors = pro.cslauncher.core.profile.JvmArgs.validate(pro.cslauncher.core.profile.JvmArgs.tokenize(args)).filter { it.severity == pro.cslauncher.core.profile.JvmArgs.Severity.ERROR }
+                    errors.forEach { Text(it.message, color = p.danger, fontSize = 11.sp) }
+                    PixelButton("Save defaults", { vm.updateSettings { it.copy(defaultJvmArgs = args) } }, enabled = errors.isEmpty())
+                    LinkButton("Manage default account", { onOpen(Overlay.Accounts) })
+                }
                 Category.APPEARANCE -> {
                     ChoiceRow("Theme", ThemeChoice.entries, s.theme, label = { when (it) { ThemeChoice.PIXEL -> "Pixel (blocky)"; ThemeChoice.DARK_GRAPHITE -> "Dark Graphite"; ThemeChoice.GLASSMORPHISM -> "Glassmorphism" } }) { t -> vm.updateSettings { it.copy(theme = t) } }
                     SwitchRow("Animated background", "Moving pixel landscape behind the launcher (paused when hidden)", s.animatedBackground, enabled = !s.reduceMotion) { v -> vm.updateSettings { it.copy(animatedBackground = v) } }
@@ -119,6 +155,9 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                 Category.RECORDING -> RecordingSettingsSection(vm, s.recording)
                 Category.RUNTIMES -> RuntimesSection(vm)
                 Category.DOWNLOADS -> {
+                    ChoiceRow("Attempts per file", (1..6).toList(), s.downloadAttempts, label = { "$it" }) { v -> vm.updateSettings { it.copy(downloadAttempts = v) } }
+                    Text("Concurrency applies to the next download batch. Active batches finish with their original limit.", color = p.textMuted, fontSize = 11.sp)
+
                     SliderRow("Parallel downloads", s.downloadConcurrency.toFloat(), 1f..12f, steps = 10, format = { it.toInt().toString() }) { v -> vm.updateSettings { it.copy(downloadConcurrency = v.toInt()) } }
                     Text("Takes effect after restarting the launcher.", color = p.textMuted, fontSize = 11.sp)
                     SwitchRow("Show snapshots", null, s.showSnapshots) { v -> vm.updateSettings { it.copy(showSnapshots = v) } }
@@ -187,6 +226,8 @@ private fun RuntimesSection(vm: LauncherViewModel) {
     val scope = rememberCoroutineScope()
     var refresh by remember { mutableIntStateOf(0) }
     val runtimes = remember(refresh) { runCatching { Services.runtimes.list() }.getOrDefault(emptyList()) }
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    ChoiceRow("Default Java for new instances", listOf<String?>(null) + runtimes.map { it.id }, settings.defaultRuntimeId, label = { it ?: "Automatic" }) { v -> vm.updateSettings { it.copy(defaultRuntimeId = v) } }
     val components = remember(refresh) { runCatching { Services.components.list() }.getOrDefault(emptyList()) }
     var pendingRuntime by remember { mutableStateOf<java.io.File?>(null) }
     var busy by remember { mutableStateOf(false) }

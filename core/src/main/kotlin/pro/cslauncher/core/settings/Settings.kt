@@ -63,10 +63,15 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val reduceTransparency: Boolean = false,
     val reduceMotion: Boolean = false,
     val downloadConcurrency: Int = 6,
+    val downloadAttempts: Int = 3,
     val showSnapshots: Boolean = false,
     val showHistorical: Boolean = false,
     val recentActivityEnabled: Boolean = true,
     val defaultRenderer: String = "auto",
+    val defaultMemoryMb: Int? = null,
+    val defaultRuntimeId: String? = null,
+    val defaultJvmArgs: String = "",
+
     val performancePreset: PerformancePreset = PerformancePreset.BALANCED,
     val frameRateLimit: Int = 0,              // 0 = unlimited (game setting is authoritative)
     val touch: TouchSettings = TouchSettings(),

@@ -96,6 +96,7 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
                             verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             when {
                                 pr.effectiveVersionId in ui.needsRepair -> Badge("REPAIR", p.danger, icon = "warning")
+                                pr.installationState in listOf("pending", "installing", "incomplete") -> Badge(pr.installationState.uppercase(), p.warning)
                                 installed -> Badge("READY", icon = "check")
                                 else -> Badge("NOT INSTALLED", Color(0xFFB0B0B0), icon = "download")
                             }
@@ -117,6 +118,8 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 PixelButton("Edit", { menuFor = null; onEdit(pr.id) }, Modifier.fillMaxWidth(), height = 36.dp, icon = "edit")
                 PixelButton("Mods & content", { menuFor = null; vm.select(pr.id); onOpen(Overlay.Content(ContentSection.MODS)) }, Modifier.fillMaxWidth(), height = 36.dp, icon = "pickaxe")
+                PixelButton("Install / retry", { menuFor = null; vm.installProfile(pr.id) }, Modifier.fillMaxWidth(), height = 36.dp, icon = "download")
+                PixelButton("Repair files", { menuFor = null; vm.repair(pr.effectiveVersionId) }, Modifier.fillMaxWidth(), height = 36.dp, icon = "refresh")
                 PixelButton("Duplicate", { menuFor = null; vm.duplicate(pr.id, pr.name + " copy") }, Modifier.fillMaxWidth(), height = 36.dp, icon = "plus")
                 PixelButton("Copy export JSON", {
                     menuFor = null
@@ -163,16 +166,45 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
     var snapshots by remember { mutableStateOf(settings.showSnapshots) }
     var version by remember { mutableStateOf(ui.manifest?.latestRelease ?: "") }
     var kind by remember { mutableStateOf(NewKind.VANILLA) }
+    var memory by remember { mutableStateOf(settings.defaultMemoryMb) }
+    var runtime by remember { mutableStateOf(settings.defaultRuntimeId) }
+    var renderer by remember { mutableStateOf(settings.defaultRenderer) }
+    var icon by remember { mutableStateOf("grass") }
+    var jvm by remember { mutableStateOf(settings.defaultJvmArgs) }
+    var directory by remember { mutableStateOf(GameDirMode.ISOLATED) }
+    var advanced by remember { mutableStateOf(false) }
+    var loaderVersions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedLoader by remember { mutableStateOf<String?>(null) }
+    var loaderLoading by remember { mutableStateOf(false) }
+    var loaderError by remember { mutableStateOf<String?>(null) }
+    var runtimes by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(Unit) { runtimes = withContext(Dispatchers.IO) { Services.runtimes.list().map { it.id } } }
+    LaunchedEffect(version, kind) {
+        loaderVersions = emptyList(); selectedLoader = null; loaderError = null
+        if (kind == NewKind.FABRIC || kind == NewKind.QUILT) {
+            loaderLoading = true
+            try {
+                loaderVersions = withContext(Dispatchers.IO) {
+                    pro.cslauncher.core.content.LoaderInstaller(Services.http, Services.dirs)
+                        .versions(LoaderType.valueOf(kind.name), version).map { it.version }
+                }
+                selectedLoader = loaderVersions.firstOrNull()
+                if (loaderVersions.isEmpty()) loaderError = "No compatible loader for $version"
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { loaderError = e.message ?: "Loader metadata unavailable" }
+            finally { loaderLoading = false }
+        } else loaderLoading = false
+    }
     val types = buildSet { add(VersionType.RELEASE); if (snapshots) add(VersionType.SNAPSHOT); if (settings.showHistorical) { add(VersionType.OLD_BETA); add(VersionType.OLD_ALPHA) } }
-    val versions = remember(ui.manifest, query, snapshots) { ui.manifest?.filter(types, query)?.take(120).orEmpty() }
+    val versions = remember(ui.manifest, query, snapshots) { ui.manifest?.filter(types, query).orEmpty() }
     PixelDialog(onDismiss, "New profile", widthFraction = 0.9f, scroll = false, buttons = {
         PixelButton("Cancel", onDismiss)
         PixelButton(if (kind == NewKind.OPTIFINE) "Continue" else "Create", {
             when (kind) {
                 NewKind.OPTIFINE -> onOptiFine(version)
-                else -> { vm.createProfile(name, version, LoaderType.valueOf(kind.name)); onDismiss() }
+                else -> { vm.createProfile(name, version, LoaderType.valueOf(kind.name), memory, runtime, renderer, icon, jvm, directory, selectedLoader); onDismiss() }
             }
-        }, style = PxStyle.PRIMARY, enabled = version.isNotBlank(), icon = "check")
+        }, style = PxStyle.PRIMARY, enabled = version.isNotBlank() && !loaderLoading && loaderError == null, icon = "check")
     }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {
@@ -198,7 +230,7 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
                 }
             }
             Column(Modifier.weight(0.9f).verticalScroll(rememberScrollState())) {
-                PixelTextField(name, { name = it }, placeholder = version.ifBlank { "Profile name" }, label = "Name")
+                PixelTextField(name, { name = it }, placeholder = "$version ${kind.label}".trim().ifBlank { "Profile name" }, label = "Name")
                 Spacer(Modifier.height(8.dp))
                 Text("Type", color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp)
                 Spacer(Modifier.height(4.dp))
@@ -210,6 +242,22 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
                     NewKind.QUILT -> "Installs the newest Quilt loader for $version."
                     NewKind.OPTIFINE -> "Next you pick the OptiFine jar for $version from optifine.net (it opens inside the app). It is installed and patched locally."
                 }, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
+                if (loaderLoading) PixelProgress(null)
+                loaderError?.let { Text(it, color = p.danger, fontSize = 11.sp) }
+                if (loaderVersions.isNotEmpty()) ChoiceRow("Loader version", loaderVersions, selectedLoader ?: loaderVersions.first(), label = { it }) { selectedLoader = it }
+                Text("Icon", color = p.textSecondary, fontSize = 11.sp)
+                FlowRowCompat { PROFILE_ICON_CHOICES.forEach { ic -> PixelIconButton(ic, ic, { icon = ic }, style = if (icon == ic) PxStyle.SELECTED else PxStyle.NORMAL, size = 32.dp) } }
+                SwitchRow("Automatic memory", "Recommended ${vm.recommendedHeapMb()} MB", memory == null) { memory = if (it) null else vm.recommendedHeapMb() }
+                memory?.let { m ->
+                    SliderRow("RAM", m.toFloat().coerceIn(512f, vm.maxHeapMb().toFloat().coerceAtLeast(513f)), 512f..vm.maxHeapMb().toFloat().coerceAtLeast(513f), format = { "${it.toInt()} MB" }) { memory = (it.toInt() / 64) * 64 }
+                    FlowRowCompat { listOf(1024, 2048, 3072, 4096).filter { it <= vm.maxHeapMb() }.forEach { mb -> PixelButton("$mb MB", { memory = mb }, height = 30.dp) } }
+                }
+                ChoiceRow("Java", listOf<String?>(null) + runtimes, runtime, label = { it ?: "Automatic (version compatible)" }) { runtime = it }
+                ChoiceRow("Renderer", listOf("auto") + Services.renderers.backends.map { it.id }, renderer, label = { it }) { renderer = it }
+                ChoiceRow("Game directory", listOf(GameDirMode.ISOLATED, GameDirMode.SHARED), directory, label = { it.name.lowercase() }) { directory = it }
+                Text(if (directory == GameDirMode.ISOLATED) "New isolated folder under ${Services.dirs.instances}" else Services.dirs.sharedGameDir.toString(), color = p.textMuted, fontSize = 10.sp)
+                PixelButton(if (advanced) "Hide advanced" else "Advanced options", { advanced = !advanced }, height = 32.dp)
+                if (advanced) PixelTextField(jvm, { jvm = it }, label = "JVM arguments", singleLine = false)
                 Text("Forge/NeoForge need a desktop installer process and are not supported on Android yet.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
@@ -228,7 +276,7 @@ fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
     val jvmFindings = remember(e.jvmArgs) { JvmArgs.validate(JvmArgs.tokenize(e.jvmArgs)).filter { it.severity != JvmArgs.Severity.INFO } }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Edit profile", onBack) { HeaderAction("Save", "check", { vm.saveProfile(e); onBack() }, style = PxStyle.PRIMARY) }
+        ScreenHeader("Edit profile", onBack) { HeaderAction("Save", "check", { if (ProfileValidator.validate(e).isEmpty() && (e.memoryMb ?: 512) <= vm.maxHeapMb()) { vm.saveProfile(e); onBack() } else vm.toast("Correct the invalid profile settings before saving") }, style = PxStyle.PRIMARY) }
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PanelSection("General", "grass") {
@@ -254,7 +302,7 @@ fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
                     ChoiceRow("Backend", listOf("auto") + renderers.map { it.id }, e.rendererId, label = { rid -> if (rid == "auto") "Automatic" else renderers.first { it.id == rid }.displayName }) { e = e.copy(rendererId = it, rendererMemo = null) }
                     Text("Automatic picks the first renderer that is installed and supported by this device and version, and remembers what worked.", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                     renderers.forEach { r ->
-                        val st = remember(r.id) { runCatching { r.status(pro.cslauncher.core.renderer.RendererEnvironment(Services.platform, android.os.Build.VERSION.SDK_INT, Services.device.glesVersion, Services.device.vulkanApi, Services.components.availableLibraries(Services.abi), e.versionId, true, false)) }.getOrNull() }
+                        val st = remember(r.id, e.versionId) { runCatching { r.status(pro.cslauncher.core.renderer.RendererEnvironment(Services.platform, android.os.Build.VERSION.SDK_INT, Services.device.glesVersion, Services.device.vulkanApi, Services.components.availableLibraries(Services.abi), e.versionId, true, false)) }.getOrNull() }
                         if (st != null) Text("${r.displayName}: ${if (st.state == RendererState.AVAILABLE) "available" else st.reason}", color = if (st.state == RendererState.AVAILABLE) p.success else p.textSecondary, fontSize = 11.sp)
                     }
                     SliderRow("Render scale", e.renderScale, 0.3f..1f, format = { "${(it * 100).toInt()}%" }) { e = e.copy(renderScale = (it * 20).toInt() / 20f) }
@@ -290,9 +338,17 @@ fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
                     LinkButton("Open control editor", { ControlEditorActivity.open(vm.getApplication(), e.controlLayoutId) }, icon = "edit")
                 }
                 PanelSection("Game folder", "folder") {
+                    Text("Changing location does not move or delete existing worlds or mods. The old folder is preserved.", color = p.warning, fontSize = 11.sp)
+                    Text(runCatching { e.gameDir(Services.dirs).toString() }.getOrDefault("Invalid directory"), color = p.textMuted, fontSize = 10.sp)
                     ChoiceRow("Location", GameDirMode.entries.filter { it != GameDirMode.CUSTOM }, e.gameDirMode, label = { if (it == GameDirMode.ISOLATED) "Separate" else "Shared" }) { e = e.copy(gameDirMode = it) }
                 }
                 PanelSection("Advanced", "settings") {
+                    SwitchRow("Fullscreen game", "Game window preference; Android stays landscape", e.fullscreen) { e = e.copy(fullscreen = it) }
+                    ChoiceRow("Resolution", listOf("Device", "854×480", "1280×720", "1920×1080"), e.resolutionWidth?.let { "${it}×${e.resolutionHeight}" } ?: "Device", label = { it }) { value ->
+                        val dims = value.split("×")
+                        e = e.copy(resolutionWidth = dims.firstOrNull()?.toIntOrNull(), resolutionHeight = dims.getOrNull(1)?.toIntOrNull())
+                    }
+
                     PixelTextField(e.jvmArgs, { e = e.copy(jvmArgs = it) }, label = "JVM arguments", singleLine = false)
                     jvmFindings.forEach { f -> Text("${f.arg}: ${f.message}", color = if (f.severity == JvmArgs.Severity.ERROR) p.danger else p.warning, fontSize = 11.sp) }
                     Spacer(Modifier.height(8.dp))

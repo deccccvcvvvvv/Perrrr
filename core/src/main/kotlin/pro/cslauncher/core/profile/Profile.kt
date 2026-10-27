@@ -34,8 +34,14 @@ data class Profile(
     val customGameDir: String? = null,
     val controlLayoutId: String = "default-touch",
     val renderScale: Float = 1.0f,
+    val resolutionWidth: Int? = null,
+    val resolutionHeight: Int? = null,
+    val fullscreen: Boolean = false,
     val env: Map<String, String> = emptyMap(),
     val iconKey: String = "grass",
+    val installationState: String = "existing",
+    val installationError: String? = null,
+
     val createdAtMs: Long = System.currentTimeMillis(),
     val lastPlayedAtMs: Long? = null,
     val lastRun: RunStatus? = null,
@@ -56,11 +62,15 @@ object ProfileValidator {
     private val ENV_KEY = Regex("^[A-Za-z_][A-Za-z0-9_]{0,63}$")
     fun validate(p: Profile): List<ValidationProblem> {
         val out = mutableListOf<ValidationProblem>()
+        runCatching { LauncherDirs.checkId(p.id) }.onFailure { out += ValidationProblem("id", "Invalid profile identifier") }
         if (p.name.isBlank()) out += ValidationProblem("name", "Profile name cannot be empty")
         if (p.name.length > 64) out += ValidationProblem("name", "Profile name is longer than 64 characters")
         runCatching { LauncherDirs.checkId(p.versionId) }.onFailure { out += ValidationProblem("versionId", "Invalid version id") }
         p.memoryMb?.let { if (it < 512) out += ValidationProblem("memoryMb", "At least 512 MB is required") }
         if (p.gameDirMode == GameDirMode.CUSTOM && p.customGameDir.isNullOrBlank()) out += ValidationProblem("customGameDir", "Choose a game directory")
+        if ((p.resolutionWidth == null) != (p.resolutionHeight == null)) out += ValidationProblem("resolution", "Both resolution dimensions are required")
+        if (p.resolutionWidth != null && p.resolutionWidth !in 320..7680) out += ValidationProblem("resolution", "Width must be 320–7680")
+        if (p.resolutionHeight != null && p.resolutionHeight !in 240..4320) out += ValidationProblem("resolution", "Height must be 240–4320")
         if (p.renderScale !in 0.25f..1.0f) out += ValidationProblem("renderScale", "Render scale must be between 25% and 100%")
         p.env.keys.filterNot { ENV_KEY.matches(it) }.forEach { out += ValidationProblem("env", "Invalid environment variable name '$it'") }
         JvmArgs.validate(JvmArgs.tokenize(p.jvmArgs)).filter { it.severity == JvmArgs.Severity.ERROR }.forEach { out += ValidationProblem("jvmArgs", it.message) }

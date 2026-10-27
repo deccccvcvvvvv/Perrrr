@@ -1,5 +1,7 @@
 package pro.cslauncher.app.ui.screens
 
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
@@ -30,6 +32,9 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val msa by vm.msa.collectAsStateWithLifecycle()
+    var elyName by remember { mutableStateOf("") }
+    var elyPassword by remember { mutableStateOf("") }
+    var elyOtp by remember { mutableStateOf("") }
     var offlineName by remember { mutableStateOf("") }
     var removing by remember { mutableStateOf<String?>(null) }
 
@@ -44,15 +49,15 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                     val active = a.id == ui.accounts.activeId
                     PixelPanel(Modifier.fillMaxWidth().padding(bottom = 8.dp).staggerIn(i).clickable { vm.setActiveAccount(a.id) }, selected = active, padding = 8.dp) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PixelSlot(size = 40.dp) { PixelIcon("head", size = 26.dp) }
+                            PixelSlot(size = 40.dp) { AccountHead(a.skinUrl) }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     PixelTitle(a.username, Modifier.weight(1f, fill = false), fontSize = 13.sp); Spacer(Modifier.width(6.dp))
-                                    if (a.type == AccountType.MICROSOFT) Badge("MICROSOFT", Color(0xFF8FD3FF)) else Badge("OFFLINE", p.warning)
+                                    if (a.type == AccountType.MICROSOFT) Badge("MICROSOFT", Color(0xFF8FD3FF)) else if (a.type == AccountType.ELY_BY) Badge("ELY.BY", p.accent) else Badge("LOCAL", p.warning)
                                     if (active) { Spacer(Modifier.width(6.dp)); Badge("ACTIVE", icon = "check") }
                                 }
-                                if (a.type == AccountType.MICROSOFT) Text(if ((a.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis()) "Session will be refreshed at launch" else "Signed in", color = p.textSecondary, fontSize = 10.sp)
+                                if (a.type != AccountType.OFFLINE) Text(if ((a.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis()) "Session will be refreshed at launch" else "Signed in", color = p.textSecondary, fontSize = 10.sp)
                                 else Text("Single-player and offline-mode servers only. Not a Minecraft login.", color = p.warning, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 2.dp))
                             }
                             PixelIconButton("trash", "Sign out", { removing = a.id }, style = PxStyle.DANGER, size = 32.dp)
@@ -86,7 +91,18 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(10.dp))
                 PixelPanel(Modifier.fillMaxWidth()) {
-                    PixelTitle("Offline profile", fontSize = 13.sp)
+                    PixelTitle("Ely.by account", fontSize = 13.sp)
+                    PixelTextField(elyName, { elyName = it }, label = "Username or email")
+                    PixelTextField(elyPassword, { elyPassword = it }, label = "Password", secret = true)
+                    PixelTextField(elyOtp, { elyOtp = it }, label = "2FA code (if enabled)", secret = true)
+                    PixelButton("Sign in to Ely.by", {
+                        vm.addEly(elyName, elyPassword, elyOtp); elyPassword = ""; elyOtp = ""
+                    }, enabled = elyName.isNotBlank() && elyPassword.isNotEmpty(), height = 36.dp)
+                    Text("Ely.by servers use a separate identity from Microsoft. Passwords are never saved.", color = p.textMuted, fontSize = 11.sp)
+                }
+                Spacer(Modifier.height(10.dp))
+                PixelPanel(Modifier.fillMaxWidth()) {
+                    PixelTitle("Local account", fontSize = 13.sp)
                     Text("For single-player and LAN/servers running in offline mode. Online-mode servers and Realms require a Microsoft account.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
                     PixelTextField(offlineName, { offlineName = it }, placeholder = "Player name")
                     if (offlineName.isNotEmpty() && !OfflineIdentity.validName(offlineName)) Text("3–16 letters, digits or _", color = p.danger, fontSize = 11.sp)
@@ -98,4 +114,26 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
         }
     }
     removing?.let { id -> ConfirmDialog("Sign out?", "The account and its stored session are removed from this device. Profiles and worlds are not affected.", "Sign out", true, { vm.removeAccount(id) }, { removing = null }) }
+}
+
+/** Loads the account service's actual texture, never a third-party UUID proxy. */
+@Composable
+private fun AccountHead(url: String?) {
+    val ctx = LocalContext.current
+    var head by remember(url) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(url) {
+        head = if (url == null || !url.startsWith("https://textures.minecraft.net/")) null else {
+            val skin = pro.cslauncher.app.ui.theme.ImageCache.load(ctx, url, 64)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                skin?.let {
+                    val bitmap = it.asAndroidBitmap()
+                    if (bitmap.width >= 64 && bitmap.height >= 32)
+                        android.graphics.Bitmap.createBitmap(bitmap, 8, 8, 8, 8).asImageBitmap() else null
+                }
+            }
+        }
+    }
+    val image = head
+    if (image == null) PixelIcon("head", size = 26.dp)
+    else androidx.compose.foundation.Image(image, "Account skin", Modifier.size(28.dp), filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
 }

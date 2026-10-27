@@ -42,6 +42,25 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
     Row(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // ------------------------------------------------ left: title, profile, play
         Column(Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+            ui.profiles.profiles.forEach { instance ->
+                val job = jobs["task:profile-${instance.id}"]
+                PixelPanel(Modifier.fillMaxWidth().padding(bottom = 5.dp), selected = instance.id == profile?.id, padding = 6.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        PixelIcon(profileIcon(instance), size = 24.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(instance.name, color = p.text, fontSize = 12.sp)
+                            Text(profileSubtitle(instance), color = p.textMuted, fontSize = 10.sp)
+                            Text(job?.takeIf { it.active }?.let { "${it.stage} · ${it.finishedFiles}/${it.totalFiles}" }
+                                ?: if (instance.installationState == "existing") { if (instance.effectiveVersionId in ui.installed) "Ready" else "Not installed" } else instance.installationState,
+                                color = p.textSecondary, fontSize = 10.sp)
+                        }
+                        PixelButton("Select", { vm.select(instance.id) }, height = 30.dp, fontSize = 10.sp)
+                        PixelIconButton("edit", "Edit instance", { onOpen(Overlay.EditProfile(instance.id)) }, size = 30.dp)
+                    }
+                    if (job?.active == true) PixelProgress(job.fraction)
+                }
+            }
             Box(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 8.dp)) {
                 Column {
                     PixelTitle("CS LAUNCHER", fontSize = 22.sp)

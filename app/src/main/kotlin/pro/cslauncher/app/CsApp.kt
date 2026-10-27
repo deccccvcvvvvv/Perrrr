@@ -58,7 +58,7 @@ object Services {
     }
     val http by lazy { UrlConnectionTransport() }
     val settings by lazy { SettingsStore(dirs.config.resolve("settings.json")) }
-    val downloads by lazy { DownloadManager(http, maxConcurrency = settings.state.value.downloadConcurrency.coerceIn(1, 16)) }
+    val downloads by lazy { DownloadManager(http, maxConcurrency = settings.state.value.downloadConcurrency.coerceIn(1, 16), maxAttempts = settings.state.value.downloadAttempts.coerceIn(1, 6)) }
     val installer by lazy { Installer(dirs, http, downloads, platform) }
     val manifests by lazy { VersionManifestRepository(http, dirs.cache.resolve("version_manifest_v2.json")) }
     val secrets by lazy { KeystoreSecretStore(File(app.filesDir, "secrets.json")) }

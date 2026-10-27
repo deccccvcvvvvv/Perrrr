@@ -9,13 +9,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 
-@Serializable enum class AccountType { MICROSOFT, OFFLINE }
+@Serializable enum class AccountType { MICROSOFT, OFFLINE, ELY_BY }
 
 /** Non-secret account metadata. Tokens live only in a [SecretStore] (Android Keystore backed on device). */
 @Serializable data class Account(
     val id: String, val type: AccountType, val username: String, val uuid: String,
     val xuid: String? = null, val addedAtMs: Long = System.currentTimeMillis(),
     val accessTokenExpiresAtMs: Long? = null, val needsRelogin: Boolean = false,
+    val skinUrl: String? = null,
 )
 
 interface SecretStore {
@@ -62,16 +63,23 @@ class AccountRepository(private val file: Path, private val secrets: SecretStore
     @Synchronized fun remove(id: String) {
         val f = load()
         save(f.copy(accounts = f.accounts.filterNot { it.id == id }, activeId = if (f.activeId == id) f.accounts.firstOrNull { it.id != id }?.id else f.activeId))
-        listOf("mc", "msaRefresh").forEach { secrets.remove("$id.$it") }
+        listOf("mc", "msaRefresh", "elyClient").forEach { secrets.remove("$id.$it") }
     }
 
     fun storeMicrosoftTokens(id: String, mcAccessToken: String, msaRefreshToken: String) {
         secrets.put("$id.mc", mcAccessToken); secrets.put("$id.msaRefresh", msaRefreshToken)
     }
+    fun storeElyTokens(id: String, token: String, client: String) {
+        secrets.put("$id.mc", token); secrets.put("$id.elyClient", client)
+    }
+    fun elyTokens(id: String): Pair<String, String> =
+        (secrets.get("$id.mc") ?: throw AuthException("Ely.by session missing; sign in again")) to
+        (secrets.get("$id.elyClient") ?: throw AuthException("Ely.by session missing; sign in again"))
     fun refreshToken(id: String) = secrets.get("$id.msaRefresh")
 
     fun session(acc: Account, clientId: String): LaunchSession = when (acc.type) {
         AccountType.OFFLINE -> LaunchSession(acc.username, acc.uuid.replace("-", ""), "0", "legacy", "0", clientId.ifBlank { "0" }, true)
+        AccountType.ELY_BY -> LaunchSession(acc.username, acc.uuid.replace("-", ""), elyTokens(acc.id).first, "mojang", "0", "0", false)
         AccountType.MICROSOFT -> {
             val token = secrets.get("${acc.id}.mc") ?: throw AuthException("No stored session for ${acc.username}. Sign in again.")
             if ((acc.accessTokenExpiresAtMs ?: 0) < System.currentTimeMillis() + 60_000) throw AuthException("The Minecraft session for ${acc.username} expired. Refresh required.")
@@ -84,7 +92,7 @@ class AuthException(message: String, cause: Throwable? = null) : Exception(messa
 
 data class DeviceCode(val userCode: String, val verificationUri: String, val deviceCode: String, val expiresInSec: Int, val intervalSec: Int)
 data class MsaTokens(val accessToken: String, val refreshToken: String)
-data class MinecraftLogin(val accessToken: String, val expiresInSec: Long, val uuid: String, val name: String, val xuid: String?, val ownsGame: Boolean)
+data class MinecraftLogin(val accessToken: String, val expiresInSec: Long, val uuid: String, val name: String, val xuid: String?, val ownsGame: Boolean, val skinUrl: String? = null)
 
 /**
  * Microsoft account sign-in with the OAuth 2.0 device authorization grant (no embedded browser, no password handling):
@@ -154,6 +162,6 @@ class MicrosoftAuthenticator(private val http: HttpTransport, private val client
             .getOrElse { throw AuthException(if (!owns) "This account does not own Minecraft: Java Edition." else "Could not read the Minecraft profile. Has a username been chosen?") }
         val rawId = profile.str("id")!!
         val uuid = UUID(java.lang.Long.parseUnsignedLong(rawId.substring(0, 16), 16), java.lang.Long.parseUnsignedLong(rawId.substring(16), 16)).toString()
-        return MinecraftLogin(token, mco.long("expires_in") ?: 86400, uuid, profile.str("name")!!, xuid, owns)
+        return MinecraftLogin(token, mco.long("expires_in") ?: 86400, uuid, profile.str("name")!!, xuid, owns, profile.arr("skins")?.firstOrNull()?.jsonObject?.str("url"))
     }
 }

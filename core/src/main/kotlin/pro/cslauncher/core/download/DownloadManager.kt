@@ -59,10 +59,14 @@ data class DownloadHistoryEntry(val batchName: String, val finishedAtMs: Long, v
  */
 class DownloadManager(
     private val http: HttpTransport,
-    private val maxConcurrency: Int = 6,
-    private val maxAttempts: Int = 3,
+    @Volatile private var maxConcurrency: Int = 6,
+    @Volatile private var maxAttempts: Int = 3,
     private val retryBaseDelayMs: Long = 600,
 ) {
+    fun configure(concurrency: Int, attempts: Int) {
+        require(concurrency in 1..16 && attempts in 1..6)
+        maxConcurrency = concurrency; maxAttempts = attempts
+    }
     private val inFlight = ConcurrentHashMap<Path, Deferred<TaskResult>>()
     private val _active = MutableStateFlow<Map<String, BatchProgress>>(emptyMap())
     val activeBatches: StateFlow<Map<String, BatchProgress>> = _active.asStateFlow()

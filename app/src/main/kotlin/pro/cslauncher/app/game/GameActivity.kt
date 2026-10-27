@@ -185,7 +185,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             var exec = plan
             if (plan.gameArgs.any { LaunchPlan.TOKEN_PLACEHOLDER in it }) {
                 val id = intent.getStringExtra(EXTRA_ACCOUNT_ID) ?: error("No account selected")
-                val token = Services.secrets.get("$id.mc") ?: error("The stored Microsoft session is unavailable. Sign in again in Accounts.")
+                val token = Services.secrets.get("$id.mc") ?: error("The stored account session is unavailable. Sign in again in Accounts.")
                 exec = plan.withSecret(token)
             }
             val s = GameSession(plan, intent.getStringExtra(EXTRA_FINGERPRINT)); session = s

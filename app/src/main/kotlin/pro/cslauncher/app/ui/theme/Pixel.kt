@@ -222,10 +222,10 @@ fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect:
 
 @Composable
 fun PixelTextField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String = "", singleLine: Boolean = true,
-                   minLines: Int = 1, onDone: (() -> Unit)? = null, label: String? = null) {
+                   minLines: Int = 1, onDone: (() -> Unit)? = null, label: String? = null, secret: Boolean = false) {
     Column(modifier) {
         if (label != null) Text(label, color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
-        BasicTextField(value, onValueChange, Modifier.fillMaxWidth(), singleLine = singleLine, minLines = minLines,
+        BasicTextField(value, onValueChange, Modifier.fillMaxWidth(), visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None, singleLine = singleLine, minLines = minLines,
             textStyle = TextStyle(color = Color.White, fontSize = 13.sp, fontFamily = Monocraft), cursorBrush = SolidColor(Color.White),
             keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Search else ImeAction.Default),
             keyboardActions = KeyboardActions(onSearch = { onDone?.invoke() }, onDone = { onDone?.invoke() }),
