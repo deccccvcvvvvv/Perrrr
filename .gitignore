@@ -11,3 +11,6 @@ captures/
 natives-out/
 natives-dl/
 app/src/main/assets/bundled/
+
+# CI release signing material
+app/release.keystore

@@ -28,16 +28,24 @@ android {
     signingConfigs {
         // Shared *debug* key (standard public debug credentials, not a secret) so that every
         // debug APK - local or CI - has the same signature and installs as an update instead of
-        // failing with "App not installed". Release signing is configured separately by the publisher.
+        // failing with "App not installed". Release signing material is supplied only through GitHub Actions secrets.
         getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        create("release") {
+            val storePath = System.getenv("RELEASE_KEYSTORE_PATH")
+            if (!storePath.isNullOrBlank()) storeFile = file(storePath)
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+        }
     }
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
