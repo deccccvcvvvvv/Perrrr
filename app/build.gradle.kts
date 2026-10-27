@@ -41,6 +41,9 @@ android {
             storePassword = System.getenv("RELEASE_STORE_PASSWORD")
             keyAlias = System.getenv("RELEASE_KEY_ALIAS")
             keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            // Include both legacy JAR/v1 and modern APK/v2 signatures for wider OEM installer compatibility.
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
     buildTypes {

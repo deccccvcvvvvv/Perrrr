@@ -98,7 +98,10 @@ jobs:
         run: |
           test -n "$RELEASE_STORE_PASSWORD" && test -n "$RELEASE_KEY_PASSWORD" && test -n "$RELEASE_KEY_ALIAS" || { echo "::error::Release signing configuration is incomplete"; exit 1; }
           ./gradlew :app:assembleRelease --console=plain
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk)"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          grep -Fq 'Verified using v1 scheme (JAR signing): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v1 signature"; exit 1; }
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v2 signature"; exit 1; }
 
       - name: Native dependency check (every DT_NEEDED of APK libs, runtimes and components resolves)
         run: python3 tools/check_bundle_needed.py app/build/outputs/apk/release/app-release.apk app/src/main/assets
