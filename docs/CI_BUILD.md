@@ -1,0 +1,60 @@
+# Building the APK — GitHub Actions only
+
+**Policy:** this project never builds an APK on a developer machine. `./gradlew assembleDebug`,
+`assembleRelease`, `build` (and equivalents), Android Studio's *Build APK*, and any local attempt to
+package the app are forbidden. Source edits, Gradle/YAML edits and pure-JVM `:core:test` runs are
+fine; compiling/packaging the APK happens only inside the GitHub Actions workflow.
+
+## Workflow
+
+`.github/workflows/android.yml`, job **`build`**:
+
+1. `actions/checkout@v4`.
+2. `actions/setup-java@v4` — Temurin JDK 17 (matches AGP 8.5.2 / Kotlin 2.0.20).
+3. `sdkmanager` — `platforms;android-34`, `build-tools;34.0.0`, `ndk;26.3.11579264`, `cmake;3.22.1`;
+   writes `local.properties`.
+4. `gradle/actions/setup-gradle@v4`.
+5. **Restore bundled payloads.** `assets/bundled/` is gitignored, so the workflow downloads the
+   pinned `CSLauncherPro-1.0.4-round7-debug.apk` release asset with `gh release download`, verifies
+   its SHA-256 (`8da3b7c5a7ce873a4ddd43c3af16ca263d2f3006706877cae09b275f0d305335`), extracts
+   `assets/bundled/*` into `app/src/main/assets/`. This supplies the Java 8/17/21/25 runtimes and
+   the LWJGL 3.3.3 / 3.4.3, GL4ES and MobileGlues component packs. Without it, a clean checkout
+   produces an APK with no usable game runtime.
+6. `:core:test`, `:app:testDebugUnitTest`, `:app:checkAndroidApi`, `:app:lintDebug`.
+7. `:app:assembleDebug` — **the only APK build step**. Gradle compiles all Kotlin and builds
+   `libcsglfw.so` / `libcsbridge.so` from `app/src/main/cpp` via CMake, so launcher code is never
+   stale even though the third-party payloads are reused.
+8. `tools/check_bundle_needed.py` verifies every ELF `DT_NEEDED`, and the APK contents are asserted.
+9. `actions/upload-artifact@v4` publishes **`CSLauncherPro-debug-apk`** (14-day retention).
+10. On failure, `build-reports` (compiler/test/lint output) is uploaded and a summary is written to
+    the run's job summary. No APK is reported when a step fails.
+
+The `natives` / `natives34` jobs that cross-compile LWJGL, GL4ES, MobileGlues, OpenAL Soft,
+FreeType, shaderc and SPIRV-Cross from source are preserved but gated behind
+`workflow_dispatch → rebuild_natives = true`. They are not on the APK build path, so a two-hour
+source build is not required for every push and a failure there cannot block an APK.
+
+## Triggering
+
+- Automatic on push to `main` and on pull requests.
+- Manual: **Actions → Android build → Run workflow**, optional `rebuild_natives`.
+- API: `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` with `{"ref":"main"}`.
+
+## Updating the pinned payloads
+
+When third-party natives/runtimes change, run the source jobs with `rebuild_natives`, publish a new
+release asset, then update `PAYLOAD_TAG`, `PAYLOAD_APK` and `PAYLOAD_SHA256` in the workflow's
+`env:` block together. The checksum gate makes a wrong or tampered asset fail loudly.
+
+## Known external blocker (account-level)
+
+GitHub currently refuses to start **any** hosted runner for this repository. Every job fails within
+2–3 seconds with `runner_id: 0` and zero steps; the check-run annotation reads:
+
+> "The job was not started because recent account payments have failed or your spending limit needs
+> to be increased. Please check the 'Billing & plans' section in your settings."
+
+This is a billing/spending-limit problem on the GitHub account, **not** a workflow or source error.
+It cannot be fixed from the repository. Once the payment method / spending limit is corrected in
+*Settings → Billing & plans*, re-run the workflow (or push again) and the `build` job will execute.
+Until then no GitHub Actions APK artifact can exist, and none should be claimed.

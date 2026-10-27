@@ -59,6 +59,10 @@ sealed class Overlay {
 }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        /** Used by the install notification so a tap lands on the real download queue. */
+        const val EXTRA_OPEN_DOWNLOADS = "cs.openDownloads"
+    }
     private val vm: LauncherViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,10 +73,11 @@ class MainActivity : ComponentActivity() {
                 else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         applySystemBars()
+        val startTab = if (intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true) Tab.DOWNLOADS else Tab.HOME
         setContent {
             val settings by vm.settings.collectAsStateWithLifecycle()
             LaunchedEffect(settings.fullscreenLauncher) { applySystemBars() }
-            CsTheme(settings.theme, settings.reduceTransparency, settings.reduceMotion) { LauncherApp(vm, settings.animatedBackground) }
+            CsTheme(settings.theme, settings.reduceTransparency, settings.reduceMotion) { LauncherApp(vm, settings.animatedBackground, initialTab = startTab) }
         }
     }
 

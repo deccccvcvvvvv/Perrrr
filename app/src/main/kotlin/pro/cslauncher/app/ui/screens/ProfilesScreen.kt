@@ -154,7 +154,16 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
     }
 }
 
-private enum class NewKind(val label: String, val icon: String) { VANILLA("Vanilla", "grass"), FABRIC("Fabric", "pickaxe"), QUILT("Quilt", "pickaxe"), OPTIFINE("OptiFine", "bolt") }
+private enum class NewKind(val label: String, val icon: String, val supported: Boolean = true, val reason: String = "") {
+    VANILLA("Vanilla", "grass"),
+    FABRIC("Fabric", "pickaxe"),
+    QUILT("Quilt", "book"),
+    // Shown so users can see what exists, but never offered as a working choice: the core has no
+    // installer-processor support and must not fake these loaders.
+    FORGE("Forge", "bolt", false, "Forge needs installer processors that patch the client JAR. This launcher cannot run them on Android yet."),
+    NEOFORGE("NeoForge", "star", false, "NeoForge needs installer processors that patch the client JAR. This launcher cannot run them on Android yet."),
+    OPTIFINE("OptiFine", "bolt"),
+}
 
 @Composable
 internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, onOptiFine: (String) -> Unit) {
@@ -197,6 +206,8 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
     }
     val types = buildSet { add(VersionType.RELEASE); if (snapshots) add(VersionType.SNAPSHOT); if (settings.showHistorical) { add(VersionType.OLD_BETA); add(VersionType.OLD_ALPHA) } }
     val versions = remember(ui.manifest, query, snapshots) { ui.manifest?.filter(types, query).orEmpty() }
+    val displayName = name.trim().ifBlank { "$version ${kind.label}".trim() }
+    val duplicateName = ui.profiles.profiles.any { it.name.equals(displayName, ignoreCase = true) }
     PixelDialog(onDismiss, "New profile", widthFraction = 0.9f, scroll = false, buttons = {
         PixelButton("Cancel", onDismiss)
         PixelButton(if (kind == NewKind.OPTIFINE) "Continue" else "Create", {
@@ -204,7 +215,7 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
                 NewKind.OPTIFINE -> onOptiFine(version)
                 else -> { vm.createProfile(name, version, LoaderType.valueOf(kind.name), memory, runtime, renderer, icon, jvm, directory, selectedLoader); onDismiss() }
             }
-        }, style = PxStyle.PRIMARY, enabled = version.isNotBlank() && !loaderLoading && loaderError == null, icon = "check")
+        }, style = PxStyle.PRIMARY, enabled = version.isNotBlank() && !loaderLoading && loaderError == null && kind.supported && !duplicateName, icon = "check")
     }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {
@@ -231,17 +242,22 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
             }
             Column(Modifier.weight(0.9f).verticalScroll(rememberScrollState())) {
                 PixelTextField(name, { name = it }, placeholder = "$version ${kind.label}".trim().ifBlank { "Profile name" }, label = "Name")
+                if (duplicateName) Text("An instance named '$displayName' already exists. Choose a different name.", color = p.danger, fontSize = 10.sp, lineHeight = 12.sp)
+                else Text("Internal ID is generated separately, so you can rename this instance later.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp)
                 Spacer(Modifier.height(8.dp))
                 Text("Type", color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp)
                 Spacer(Modifier.height(4.dp))
-                PixelTabs(NewKind.entries, kind, { it.label }, { kind = it }, icon = { it.icon }, height = 32.dp)
+                PixelTabs(NewKind.entries, kind, { it.label }, { kind = it }, enabled = { it.supported }, icon = { it.icon }, height = 32.dp)
                 Spacer(Modifier.height(6.dp))
                 Text(when (kind) {
                     NewKind.VANILLA -> "Plain Minecraft $version."
                     NewKind.FABRIC -> "Installs the newest stable Fabric loader for $version. Browse adds mods for it automatically."
                     NewKind.QUILT -> "Installs the newest Quilt loader for $version."
+                    NewKind.FORGE -> NewKind.FORGE.reason
+                    NewKind.NEOFORGE -> NewKind.NEOFORGE.reason
                     NewKind.OPTIFINE -> "Next you pick the OptiFine jar for $version from optifine.net (it opens inside the app). It is installed and patched locally."
-                }, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
+                }, color = if (kind.supported) p.textSecondary else p.warning, fontSize = 11.sp, lineHeight = 13.sp)
+                if (!kind.supported) Text("Not installable on this launcher — the button stays disabled rather than pretending to work.", color = p.danger, fontSize = 10.sp, lineHeight = 12.sp)
                 if (loaderLoading) PixelProgress(null)
                 loaderError?.let { Text(it, color = p.danger, fontSize = 11.sp) }
                 if (loaderVersions.isNotEmpty()) ChoiceRow("Loader version", loaderVersions, selectedLoader ?: loaderVersions.first(), label = { it }) { selectedLoader = it }

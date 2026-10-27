@@ -11,7 +11,10 @@ val PROFILE_ICON_CHOICES = PROFILE_ICONS.toList()
 fun profileIcon(p: Profile): String = when {
     p.iconKey != "grass" && p.iconKey in PROFILE_ICONS -> p.iconKey
     p.isOptiFine -> "bolt"
-    p.loader?.type == LoaderType.FABRIC || p.loader?.type == LoaderType.QUILT -> "pickaxe"
+    p.loader?.type == LoaderType.FABRIC -> "pickaxe"
+    p.loader?.type == LoaderType.QUILT -> "book"
+    p.loader?.type == LoaderType.FORGE -> "bolt"
+    p.loader?.type == LoaderType.NEOFORGE -> "star"
     else -> "grass"
 }
 

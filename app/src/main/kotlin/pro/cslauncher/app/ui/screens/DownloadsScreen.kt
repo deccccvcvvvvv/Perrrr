@@ -109,9 +109,21 @@ private fun FinishedJobCard(j: InstallJob, vm: LauncherViewModel, modifier: Modi
                 Text(detail.ifBlank { j.stage }, color = if (j.status == JobStatus.FAILED) p.danger.copy(alpha = 0.9f) else p.textMuted, fontSize = 10.sp, lineHeight = 12.sp,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
             }
-            if (j.kind != JobKind.TASK && (j.status == JobStatus.FAILED || j.status == JobStatus.CANCELLED)) {
-                Spacer(Modifier.width(6.dp))
-                PixelIconButton("refresh", "Retry (resumes)", { if (j.kind == JobKind.INSTALL) vm.install(j.versionId) else vm.repair(j.versionId) }, size = 32.dp)
+            // Instance installs are TASK jobs keyed "task:profile-<uuid>": they can be retried too,
+            // resuming from the partial files the downloader kept. Other TASK jobs (modpacks,
+            // OptiFine) need their original source file, so no misleading retry is offered here.
+            val instanceId = j.versionId.takeIf { it.startsWith("task:profile-") }?.removePrefix("task:profile-")
+            if (j.status == JobStatus.FAILED || j.status == JobStatus.CANCELLED) {
+                if (j.kind != JobKind.TASK || instanceId != null) {
+                    Spacer(Modifier.width(6.dp))
+                    PixelIconButton("refresh", "Retry (resumes)", {
+                        when {
+                            instanceId != null -> vm.installProfile(instanceId)
+                            j.kind == JobKind.INSTALL -> vm.install(j.versionId)
+                            else -> vm.repair(j.versionId)
+                        }
+                    }, size = 32.dp)
+                }
             }
         }
     }

@@ -178,7 +178,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
                 val shim = File(getApplication<Application>().applicationInfo.nativeLibraryDir, "libcsglfw.so").toPath()
                 val launchProfile = if (account.type == AccountType.ELY_BY) {
                     val agent = ElyAuthenticator(s.http).ensureAgent(s.dirs.cache.resolve("auth"))
-                    p.copy(jvmArgs = p.jvmArgs + " \"-javaagent:${agent.toAbsolutePath()}=https://authserver.ely.by\"")
+                    p.copy(jvmArgs = p.jvmArgs + " \"-javaagent:${agent.toAbsolutePath()}=${ElyAuthenticator.AUTHLIB_INJECTOR_API}\"")
                 } else p
                 val req = LaunchRequest(launchProfile, { s.accounts.session(account, settings.value.msaClientId) }, { rv -> s.device.rendererEnvironment(rv) }, facts, w, h,
                     glfwShim = shim, failedRendererFingerprints = failedFingerprints(), launcherVersion = BuildConfig.VERSION_NAME)
@@ -214,10 +214,19 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private fun ensureFreshSession(acc: Account): Account {
         if (acc.type == AccountType.ELY_BY) {
             val (token, client) = s.accounts.elyTokens(acc.id)
-            val login = ElyAuthenticator(s.http).refresh(token, client)
-            s.accounts.storeElyTokens(login.account.id, login.token, login.client)
-            s.accounts.upsert(login.account)
-            return login.account
+            val login = try {
+                ElyAuthenticator(s.http).refresh(token, client, acc)
+            } catch (e: AuthException) {
+                s.accounts.upsert(acc.copy(needsRelogin = true))
+                throw AuthException("${e.message} Open Accounts and sign in to Ely.by again.")
+            }
+            // Keep the account's creation date and skin; refresh responses may omit the profile.
+            val refreshed = if (login.account.id == acc.id) login.account.copy(
+                addedAtMs = acc.addedAtMs, skinUrl = acc.skinUrl, needsRelogin = false
+            ) else login.account
+            s.accounts.storeElyTokens(refreshed.id, login.token, login.client)
+            s.accounts.upsert(refreshed)
+            return refreshed
         }
         if (acc.type != AccountType.MICROSOFT) return acc
         if ((acc.accessTokenExpiresAtMs ?: 0) > System.currentTimeMillis() + 5 * 60_000) return acc
@@ -307,7 +316,15 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         rendererId: String = settings.value.defaultRenderer,
         icon: String = "grass", jvmArgs: String = settings.value.defaultJvmArgs,
         directory: GameDirMode = GameDirMode.ISOLATED, loaderVersion: String? = null) = io {
-        val p = Profile(name = name.trim().ifBlank { "$versionId ${loader.name.lowercase().replaceFirstChar(Char::uppercase)}" },
+        // Never advertise a loader the core cannot actually install (no installer processors).
+        require(loader != LoaderType.FORGE && loader != LoaderType.NEOFORGE) {
+            "Forge/NeoForge need installer processors that patch the client; this launcher cannot install them yet. Choose Vanilla, Fabric, Quilt or OptiFine."
+        }
+        val displayName = name.trim().ifBlank { "$versionId ${loader.name.lowercase().replaceFirstChar(Char::uppercase)}" }
+        require(s.profiles.load().profiles.none { it.name.equals(displayName, ignoreCase = true) }) {
+            "An instance named '$displayName' already exists. Choose a different name."
+        }
+        val p = Profile(name = displayName,
             versionId = versionId, memoryMb = memoryMb, runtimeId = runtimeId,
             rendererId = rendererId, iconKey = icon, jvmArgs = jvmArgs, gameDirMode = directory,
             fullscreen = settings.value.defaultFullscreen,
@@ -324,8 +341,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     /** All dependencies and runtime provisioning share the foreground installation queue. */
     fun installProfile(id: String) = io {
+        if (jobs.value["task:profile-$id"]?.active == true) { toast("This instance is already installing"); return@io }
         val original = s.profiles.load().profiles.first { it.id == id }
-        InstallManager.startTask(getApplication(), "profile-$id", "${original.name} · ${original.versionId}", { ok ->
+        val loaderLabel = original.loader?.takeIf { it.type != LoaderType.VANILLA }?.let {
+            "${it.type.name.lowercase().replaceFirstChar(Char::uppercase)} ${it.version.ifBlank { "latest" }}"
+        } ?: if (original.isOptiFine) "OptiFine" else "Vanilla"
+        val started = InstallManager.startTask(getApplication(), "profile-$id",
+            "${original.name} · ${original.versionId} · $loaderLabel", { ok ->
             io {
                 val current = s.profiles.load().profiles.firstOrNull { it.id == id }
                 if (current != null) s.profiles.upsert(current.copy(installationState = if (ok) "ready" else "incomplete",
@@ -365,6 +387,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             s.profiles.upsert(p.copy(installationState = "ready", installationError = null)); reload()
             true
         }
+        if (!started) toast("An installation for this instance is already running")
     }
     fun duplicate(id: String, name: String) = io { s.profiles.duplicate(id, name); reload() }
     fun deletionPlan(id: String) = s.profiles.planDeletion(id)

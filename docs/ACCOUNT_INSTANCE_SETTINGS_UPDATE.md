@@ -19,6 +19,14 @@
 - No durable OS-scheduled download worker: foreground jobs survive navigation, not process death. Persistent instance status and partial files support explicit retry after restart. Queue progress/history itself remains process-local.
 - Ely.by skins and device sign-in/gameplay have not been verified on a physical Android device. Microsoft authentication still requires publisher approval/client configuration.
 
-## Build method
+## Follow-up changes in this pass
 
-Use the existing `:app:assembleDebug` task with JDK 17 / SDK 34 / NDK r26d / CMake 3.22.1. For this update, bundled runtime/component payloads are reused from the repository's Round 7 release APK (asset 675703335); native launcher C sources are built by the normal Gradle CMake task. No separate test campaign is run.
+- Microsoft device-code approval now opens in a Chrome Custom Tab (a real, isolated browser tab) with an external-browser fallback. Microsoft's identity platform forbids embedded WebViews for OAuth, so no WebView is used; the reason is stated in the Accounts screen.
+- Ely.by's refresh flow tolerates responses without `selectedProfile` by keeping the stored identity, marks accounts needing re-login with an actionable message, and points authlib-injector at Ely's explicit `/api/authlib-injector` metadata endpoint. The pinned 1.2.8 agent SHA-256 was re-verified against the upstream artifact. Offline unit tests cover login, 2FA, refresh fallback, error messages and secret handling.
+- Instance creation validates duplicate display names (case-insensitive) both in the dialog and in the view model, and shows Forge/NeoForge as visibly disabled with the actual reason rather than hiding them or pretending they work. Loader-specific icons were added.
+- Background install notifications now carry the instance name, Minecraft version, loader, real file progress (indeterminate when unknown), queued/running status and the actual failure message; tapping opens Downloads. Failed instance jobs can be retried directly from Downloads, resuming from kept partial files.
+- `docs/CI_BUILD.md` documents the GitHub Actions-only build. No APK is ever assembled locally.
+
+## Build method (GitHub Actions only)
+
+**APK builds are performed exclusively by `.github/workflows/android.yml` on GitHub Actions.** Never run `./gradlew assembleDebug`, `assembleRelease` or `build` on a local machine. The workflow checks out the repository, installs JDK 17 / SDK 34 / NDK r26d / CMake 3.22.1, restores the SHA-256-verified bundled runtimes and component packs from the pinned `v1.0.4-round7` release asset, runs `:core:test`, `:app:testDebugUnitTest`, `checkAndroidApi` and `lintDebug`, then builds the APK with `:app:assembleDebug` and uploads `CSLauncherPro-debug-apk` as a workflow artifact. The launcher's Kotlin and C sources are always compiled fresh; the optional `rebuild_natives` dispatch input regenerates the third-party payloads from source when needed.

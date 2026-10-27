@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import android.content.Intent
 import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -73,6 +74,7 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                         MsaState.Idle, is MsaState.Done -> {
                             if (s is MsaState.Done) Text("Signed in as ${s.name}", color = p.success, fontSize = 13.sp)
                             Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. You enter the code on Microsoft's own page; the launcher never sees your password.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
+                            Text("Sign-in opens in a Chrome Custom Tab (a real, isolated browser tab), not an embedded WebView: Microsoft's identity platform forbids embedded WebViews for OAuth. No password or token is stored by the launcher.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
                             Spacer(Modifier.height(8.dp)); PixelButton("Sign in with Microsoft", { vm.startMicrosoft() }, style = PxStyle.PRIMARY, icon = "user_add", height = 36.dp)
                         }
                         is MsaState.Code -> {
@@ -80,7 +82,7 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                             Text(s.userCode, color = Color.White, fontSize = 28.sp, fontFamily = Monocraft, modifier = Modifier.padding(vertical = 8.dp))
                             Text(s.uri, color = p.accent, fontSize = 12.sp)
                             Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                PixelButton("Open browser", { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(s.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }, style = PxStyle.PRIMARY, height = 38.dp)
+                                PixelButton("Open secure sign-in tab", { openMicrosoftSignIn(ctx, s.uri) }, style = PxStyle.PRIMARY, height = 38.dp)
                                 PixelButton("Cancel", { vm.cancelMicrosoft() }, height = 38.dp)
                             }
                             Text("Waiting for confirmation… (code expires in ${((s.expiresAtMs - System.currentTimeMillis()) / 60000).coerceAtLeast(0)} min)", color = p.textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
@@ -136,4 +138,22 @@ private fun AccountHead(url: String?) {
     val image = head
     if (image == null) PixelIcon("head", size = 26.dp)
     else androidx.compose.foundation.Image(image, "Account skin", Modifier.size(28.dp), filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
+}
+
+/**
+ * Microsoft's OAuth device-code page must be opened in a real browser. A Custom Tab gives the
+ * in-app browser experience while keeping Microsoft's own cookie jar and security UI. Devices
+ * without a Custom-Tabs-capable browser fall back to the normal external browser intent.
+ */
+private fun openMicrosoftSignIn(ctx: android.content.Context, url: String) {
+    val uri = Uri.parse(url)
+    val opened = try {
+        CustomTabsIntent.Builder().build().apply {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }.launchUrl(ctx, uri)
+        true
+    } catch (e: Exception) { false }
+    if (!opened) runCatching {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 }
