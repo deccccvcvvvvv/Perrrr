@@ -109,10 +109,11 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                     LinkButton("Manage default account", { onOpen(Overlay.Accounts) })
                 }
                 Category.APPEARANCE -> {
-                    ChoiceRow("Theme", ThemeChoice.entries, s.theme, label = { when (it) { ThemeChoice.PIXEL -> "Pixel (blocky)"; ThemeChoice.DARK_GRAPHITE -> "Dark Graphite"; ThemeChoice.GLASSMORPHISM -> "Glassmorphism" } }) { t -> vm.updateSettings { it.copy(theme = t) } }
-                    SwitchRow("Animated background", "Moving pixel landscape behind the launcher (paused when hidden)", s.animatedBackground, enabled = !s.reduceMotion) { v -> vm.updateSettings { it.copy(animatedBackground = v) } }
-                    SwitchRow("Reduce transparency", "Opaque surfaces instead of glass (also used automatically below Android 12)", s.reduceTransparency) { v -> vm.updateSettings { it.copy(reduceTransparency = v) } }
-                    SwitchRow("Reduce motion", "Disable non-essential animations", s.reduceMotion) { v -> vm.updateSettings { it.copy(reduceMotion = v) } }
+                    ChoiceRow("Theme", ThemeChoice.entries, s.theme, label = { when (it) { ThemeChoice.MINECRAFT_LAUNCHER -> "Minecraft Launcher"; ThemeChoice.PIXEL -> "Pixel"; ThemeChoice.DARK_GRAPHITE -> "Dark Graphite"; ThemeChoice.GLASSMORPHISM -> "Glassmorphism" } }) { t -> vm.updateSettings { it.copy(theme = t) } }
+                    if (s.theme == ThemeChoice.PIXEL) SwitchRow("Animated background", "Moving pixel landscape behind the launcher (paused when hidden)", s.animatedBackground, enabled = !s.reduceMotion) { v -> vm.updateSettings { it.copy(animatedBackground = v) } }
+                    SwitchRow("Reduce transparency", "Use opaque surfaces instead of glass", s.reduceTransparency) { v -> vm.updateSettings { it.copy(reduceTransparency = v) } }
+                    SwitchRow("Reduce motion", "Turn off non-essential transitions and effects", s.reduceMotion) { v -> vm.updateSettings { it.copy(reduceMotion = v) } }
+                    SwitchRow("Minecraft button sound", "Uses the game's own UI click from installed assets; uses Android's quiet click until then", s.uiClickSounds) { v -> vm.updateSettings { it.copy(uiClickSounds = v) } }
                     SwitchRow("Full screen", "Hide the status and navigation bars in the launcher (swipe from an edge to show them)", s.fullscreenLauncher) { v -> vm.updateSettings { it.copy(fullscreenLauncher = v) } }
                 }
                 Category.PERFORMANCE -> {

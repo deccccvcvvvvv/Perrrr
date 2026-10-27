@@ -104,49 +104,72 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
     val ui by vm.ui.collectAsStateWithLifecycle()
     val jobs by vm.jobs.collectAsStateWithLifecycle()
     val reduce = LocalReduceMotion.current
+    val p = LocalPalette.current
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(Unit) { if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
     BackHandler(overlay != null) { overlay = null }
     BackHandler(overlay == null && tab != Tab.HOME) { tab = Tab.HOME }
     val activeJobs = jobs.values.count { it.active }
 
-    CsBackground(animated = animatedBackground) {
-        Row(Modifier.fillMaxSize()) {
-            NavRail(tab, overlay == null, activeJobs) { t -> overlay = null; tab = t }
-            val screen: Screen = overlay?.let { Screen.O(it) } ?: Screen.T(tab)
-            AnimatedContent(screen, Modifier.weight(1f).fillMaxHeight()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Vertical)), label = "screen", transitionSpec = {
-                if (reduce) EnterTransition.None togetherWith ExitTransition.None
-                else when {
-                    targetState is Screen.O && initialState is Screen.T ->
-                        (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(200))) togetherWith fadeOut(tween(120))
-                    targetState is Screen.T && initialState is Screen.O ->
-                        fadeIn(tween(200)) togetherWith (slideOutHorizontally(tween(220)) { it / 3 } + fadeOut(tween(180)))
-                    else -> {
-                        val down = (targetState as? Screen.T)?.tab?.ordinal ?: 0
-                        val from = (initialState as? Screen.T)?.tab?.ordinal ?: 0
-                        val dir = if (down >= from) 1 else -1
-                        (slideInVertically(tween(240, easing = FastOutSlowInEasing)) { dir * it / 8 } + fadeIn(tween(220))) togetherWith
-                            (slideOutVertically(tween(180)) { -dir * it / 10 } + fadeOut(tween(140)))
-                    }
-                }.using(SizeTransform(clip = false))
-            }) { s ->
-                when (s) {
-                    is Screen.T -> when (s.tab) {
-                        Tab.HOME -> HomeScreen(vm, onOpen = { overlay = it }, onTab = { tab = it })
-                        Tab.PROFILES -> ProfilesScreen(vm, onEdit = { overlay = Overlay.EditProfile(it) }, onOpen = { overlay = it })
-                        Tab.BROWSE -> BrowseScreen(vm, onOpen = { overlay = it })
-                        Tab.DOWNLOADS -> DownloadsScreen(vm)
-                        Tab.SETTINGS -> SettingsScreen(vm, onOpen = { overlay = it })
-                    }
-                    is Screen.O -> when (val o = s.overlay) {
-                        Overlay.Accounts -> AccountsScreen(vm, onBack = { overlay = null })
-                        Overlay.Logs -> LogsScreen(vm, onBack = { overlay = null })
-                        is Overlay.EditProfile -> ProfileEditorScreen(vm, o.id, onBack = { overlay = null })
-                        is Overlay.Content -> ContentScreen(vm, o.section, onBack = { overlay = null })
-                        is Overlay.OptiFine -> OptiFineScreen(vm, o.profileId, o.versionHint, onBack = { overlay = null })
-                    }
+    if (overlay == Overlay.Logs) {
+        Box(Modifier.fillMaxSize().background(p.background)) {
+            LogsScreen(vm, onBack = { overlay = null })
+            PixelToast(ui.message) { vm.toast(null) }
+        }
+        return
+    }
+
+    @Composable
+    fun ScreenArea(modifier: Modifier) {
+        val screen: Screen = overlay?.let { Screen.O(it) } ?: Screen.T(tab)
+        AnimatedContent(screen, modifier, label = "screen", transitionSpec = {
+            if (reduce) EnterTransition.None togetherWith ExitTransition.None
+            else when {
+                targetState is Screen.O && initialState is Screen.T ->
+                    (slideInHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(200))) togetherWith fadeOut(tween(120))
+                targetState is Screen.T && initialState is Screen.O ->
+                    fadeIn(tween(200)) togetherWith (slideOutHorizontally(tween(220)) { it / 3 } + fadeOut(tween(180)))
+                else -> {
+                    val down = (targetState as? Screen.T)?.tab?.ordinal ?: 0
+                    val from = (initialState as? Screen.T)?.tab?.ordinal ?: 0
+                    val dir = if (down >= from) 1 else -1
+                    (slideInVertically(tween(240, easing = FastOutSlowInEasing)) { dir * it / 8 } + fadeIn(tween(220))) togetherWith
+                        (slideOutVertically(tween(180)) { -dir * it / 10 } + fadeOut(tween(140)))
                 }
+            }.using(SizeTransform(clip = false))
+        }) { s ->
+            when (s) {
+                is Screen.T -> when (s.tab) {
+                    Tab.HOME -> HomeScreen(vm, onOpen = { overlay = it }, onTab = { tab = it })
+                    Tab.PROFILES -> ProfilesScreen(vm, onEdit = { overlay = Overlay.EditProfile(it) }, onOpen = { overlay = it })
+                    Tab.BROWSE -> BrowseScreen(vm, onOpen = { overlay = it })
+                    Tab.DOWNLOADS -> DownloadsScreen(vm)
+                    Tab.SETTINGS -> SettingsScreen(vm, onOpen = { overlay = it })
+                }
+                is Screen.O -> when (val o = s.overlay) {
+                    Overlay.Accounts -> AccountsScreen(vm, onBack = { overlay = null })
+                    Overlay.Logs -> LogsScreen(vm, onBack = { overlay = null })
+                    is Overlay.EditProfile -> ProfileEditorScreen(vm, o.id, onBack = { overlay = null })
+                    is Overlay.Content -> ContentScreen(vm, o.section, onBack = { overlay = null })
+                    is Overlay.OptiFine -> OptiFineScreen(vm, o.profileId, o.versionHint, onBack = { overlay = null })
+                }
+            }
+        }
+    }
+
+    val compact = !p.pixel && androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+    CsBackground(animated = animatedBackground) {
+        if (compact) {
+            Column(Modifier.fillMaxSize()) {
+                ScreenArea(Modifier.weight(1f).fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)))
+                NavBottomBar(tab, activeJobs) { t -> overlay = null; tab = t }
+            }
+        } else {
+            Row(Modifier.fillMaxSize()) {
+                NavRail(tab, overlay == null, activeJobs) { t -> overlay = null; tab = t }
+                ScreenArea(Modifier.weight(1f).fillMaxHeight()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Vertical)))
             }
         }
         PixelToast(ui.message) { vm.toast(null) }
@@ -159,6 +182,38 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
  */
 @Composable
 internal fun NavRail(selected: Tab, highlight: Boolean, activeJobs: Int, onSelect: (Tab) -> Unit) {
+    val p = LocalPalette.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (!p.pixel) {
+        Column(Modifier.fillMaxHeight().width(116.dp).background(p.surfaceSecondary).padding(horizontal = 8.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PixelIcon("grass", size = 23.dp, tint = p.accent)
+                    Spacer(Modifier.width(7.dp))
+                    Column {
+                        Text("CS Launcher", color = p.text, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
+                        Text("Java Edition", color = p.textMuted, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Tab.entries.forEach { t ->
+                    val sel = t == selected && highlight
+                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                        .background(if (sel) p.selected else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(7.dp))
+                        .clickable { pro.cslauncher.app.ui.theme.MinecraftUiClickSound.play(context); onSelect(t) }
+                        .padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PixelIcon(t.icon, size = 18.dp, tint = if (sel) p.accent else p.textSecondary)
+                        Spacer(Modifier.width(9.dp))
+                        Text(t.label, color = if (sel) p.text else p.textSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        if (t == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = p.accent, fontSize = 10.sp)
+                    }
+                }
+            }
+            Text("CS Launcher · Android", color = p.textMuted, fontSize = 9.sp, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+        }
+        return
+    }
     val haptic = LocalHapticFeedback.current
     val reduce = LocalReduceMotion.current
     BoxWithConstraints(
@@ -184,7 +239,7 @@ internal fun NavRail(selected: Tab, highlight: Boolean, activeJobs: Int, onSelec
                 Box(
                     Modifier.size(58.dp, itemH)
                         .semantics { contentDescription = t.label + if (busy) ", $activeJobs running" else "" }
-                        .clickable(remember { MutableInteractionSource() }, null, role = Role.Tab) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(t) }
+                        .clickable(remember { MutableInteractionSource() }, null, role = Role.Tab) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(t) }
                         .drawBehind {
                             if (lift > 0.01f) {
                                 val b = 2.dp.toPx()

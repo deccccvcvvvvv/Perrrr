@@ -4,7 +4,11 @@ import android.graphics.Bitmap
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -94,6 +99,15 @@ fun DrawScope.pixelInset(b: Float, fill: Color = Px.inset) {
 
 @Composable
 fun PixelPanel(modifier: Modifier = Modifier, selected: Boolean = false, padding: Dp = 10.dp, content: @Composable ColumnScope.() -> Unit) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        val shape = RoundedCornerShape(8.dp)
+        Surface(modifier = modifier, shape = shape, color = if (selected) p.selected else p.card,
+            border = BorderStroke(1.dp, if (selected) p.accent.copy(alpha = 0.75f) else p.border)) {
+            Column(Modifier.padding(padding), content = content)
+        }
+        return
+    }
     val sel by animateColorAsState(if (selected) Color(0xFF6CC349) else Px.border, tween(160), label = "panelBorder")
     Column(modifier.drawBehind {
         val b = 2.dp.toPx()
@@ -110,6 +124,26 @@ fun PixelButton(
     text: String?, onClick: () -> Unit, modifier: Modifier = Modifier, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true,
     icon: String? = null, height: Dp = 40.dp, fontSize: TextUnit = 12.sp, contentDescription: String? = null,
 ) {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    if (!p.pixel) {
+        val click = { if (enabled) { MinecraftUiClickSound.play(context); onClick() } }
+        val buttonModifier = modifier.heightIn(min = height).semantics { if (contentDescription != null) this.contentDescription = contentDescription }
+        val contents: @Composable RowScope.() -> Unit = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                if (icon != null) PixelIcon(icon, size = 18.dp, tint = if (enabled) p.text else p.textMuted)
+                if (icon != null && !text.isNullOrBlank()) Spacer(Modifier.width(8.dp))
+                if (!text.isNullOrBlank()) Text(text, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        when (style) {
+            PxStyle.PRIMARY -> Button(click, buttonModifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = Color.White), content = contents)
+            PxStyle.SELECTED -> FilledTonalButton(click, buttonModifier, enabled, colors = ButtonDefaults.filledTonalButtonColors(containerColor = p.selected, contentColor = p.text), content = contents)
+            PxStyle.DANGER -> OutlinedButton(click, buttonModifier, enabled, border = BorderStroke(1.dp, p.danger.copy(alpha = 0.8f)), content = contents)
+            PxStyle.NORMAL -> OutlinedButton(click, buttonModifier, enabled, content = contents)
+        }
+        return
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val reduce = LocalReduceMotion.current
@@ -128,7 +162,7 @@ fun PixelButton(
         modifier
             .heightIn(min = height)
             .semantics { if (contentDescription != null) this.contentDescription = contentDescription }
-            .clickable(interaction, null, enabled = enabled, role = Role.Button) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
+            .clickable(interaction, null, enabled = enabled, role = Role.Button) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
             .drawBehind {
                 val d = depthDp.toPx(); val b = 2.dp.toPx(); val top = d * press
                 val w = size.width; val h = size.height
@@ -159,6 +193,13 @@ fun PixelIconButton(icon: String, contentDescription: String, onClick: () -> Uni
 /** On/off switch: a sunken slot with a sliding stone knob; the slot turns green when on. */
 @Composable
 fun PixelToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    if (!p.pixel) {
+        Switch(checked = checked, onCheckedChange = { MinecraftUiClickSound.play(context); onCheckedChange(it) }, modifier = modifier, enabled = enabled,
+            colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = Color.White, uncheckedTrackColor = p.secondarySurface))
+        return
+    }
     val reduce = LocalReduceMotion.current
     val t by animateFloatAsState(if (checked) 1f else 0f, if (reduce) snap() else spring(dampingRatio = 0.6f, stiffness = 700f), label = "toggle")
     val haptic = LocalHapticFeedback.current
@@ -177,6 +218,12 @@ fun PixelToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: 
 /** Slider with a sunken track, green fill and a stone thumb. Horizontal drags only, so it never blocks vertical scrolling. */
 @Composable
 fun PixelSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: ClosedFloatingPointRange<Float>, modifier: Modifier = Modifier, steps: Int = 0, enabled: Boolean = true) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        Slider(value = value.coerceIn(valueRange), onValueChange = onValueChange, modifier = modifier, enabled = enabled, valueRange = valueRange, steps = steps,
+            colors = SliderDefaults.colors(thumbColor = p.accent, activeTrackColor = p.accent, inactiveTrackColor = p.secondarySurface))
+        return
+    }
     val span = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
     val frac = ((value.coerceIn(valueRange.start, valueRange.endInclusive) - valueRange.start) / span)
     val latest by rememberUpdatedState(onValueChange)
@@ -213,6 +260,17 @@ fun PixelSlider(value: Float, onValueChange: (Float) -> Unit, valueRange: Closed
 @Composable
 fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier,
                   enabled: (T) -> Boolean = { true }, icon: (T) -> String? = { null }, fill: Boolean = false, height: Dp = 34.dp) {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    if (!p.pixel) {
+        FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            options.forEach { o ->
+                FilterChip(selected = o == selected, onClick = { MinecraftUiClickSound.play(context); onSelect(o) }, enabled = enabled(o),
+                    label = { Text(label(o), maxLines = 1) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = p.selected, selectedLabelColor = p.text, labelColor = p.textSecondary))
+            }
+        }
+        return
+    }
     if (fill) Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { o -> PixelButton(label(o), { onSelect(o) }, Modifier.weight(1f), if (o == selected) PxStyle.SELECTED else PxStyle.NORMAL, enabled(o), icon(o), height, 11.sp) }
     } else FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -223,6 +281,15 @@ fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect:
 @Composable
 fun PixelTextField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, placeholder: String = "", singleLine: Boolean = true,
                    minLines: Int = 1, onDone: (() -> Unit)? = null, label: String? = null, secret: Boolean = false) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        OutlinedTextField(value, onValueChange, modifier = modifier.fillMaxWidth(), label = label?.let { { Text(it) } },
+            placeholder = placeholder.takeIf { it.isNotBlank() }?.let { { Text(it) } }, singleLine = singleLine, minLines = minLines,
+            visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Default),
+            keyboardActions = KeyboardActions(onDone = { onDone?.invoke() }))
+        return
+    }
     Column(modifier) {
         if (label != null) Text(label, color = Color(0xFFCFD0D2), fontFamily = Monocraft, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
         BasicTextField(value, onValueChange, Modifier.fillMaxWidth(), visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None, singleLine = singleLine, minLines = minLines,
@@ -241,6 +308,12 @@ fun PixelTextField(value: String, onValueChange: (String) -> Unit, modifier: Mod
 /** Segmented progress bar; indeterminate shows a block sliding along (static with reduced motion). */
 @Composable
 fun PixelProgress(fraction: Float?, modifier: Modifier = Modifier, color: Color = Px.green, highlight: Color = Px.greenHi, height: Dp = 14.dp) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        if (fraction == null) LinearProgressIndicator(modifier.fillMaxWidth(), color = p.accent)
+        else LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = modifier.fillMaxWidth(), color = p.accent)
+        return
+    }
     val reduce = LocalReduceMotion.current
     val anim = if (fraction == null && !reduce) rememberInfiniteTransition(label = "indet").animateFloat(0f, 1f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "x").value else 0.3f
     val shown by animateFloatAsState(fraction ?: 0f, tween(if (reduce) 0 else 250), label = "progress")
@@ -265,6 +338,11 @@ fun PixelProgress(fraction: Float?, modifier: Modifier = Modifier, color: Color 
 /** Yellow, tilted, gently pulsing tagline in the spirit of the classic title-screen splash. */
 @Composable
 fun SplashText(text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        Text(text, modifier, color = p.textSecondary, fontSize = fontSize, maxLines = 1)
+        return
+    }
     val reduce = LocalReduceMotion.current
     val s = if (reduce) 1f else rememberInfiniteTransition(label = "splash").animateFloat(0.92f, 1.06f, infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "s").value
     Text(text, modifier.graphicsLayer { rotationZ = -12f; scaleX = s; scaleY = s }, color = Px.splash, fontFamily = Monocraft, fontSize = fontSize,
@@ -273,9 +351,12 @@ fun SplashText(text: String, modifier: Modifier = Modifier, fontSize: TextUnit =
 
 /** Title in the pixel font with a hard drop shadow. */
 @Composable
-fun PixelTitle(text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 18.sp, color: Color = Color.White) =
-    Text(text, modifier, color = color, fontFamily = Monocraft, fontSize = fontSize, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
+fun PixelTitle(text: String, modifier: Modifier = Modifier, fontSize: TextUnit = 18.sp, color: Color = Color.White) {
+    val p = LocalPalette.current
+    if (!p.pixel) Text(text, modifier, color = if (color == Color.White) p.text else color, fontSize = fontSize, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    else Text(text, modifier, color = color, fontFamily = Monocraft, fontSize = fontSize, fontWeight = FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis,
         style = TextStyle(shadow = PixelTextShadow))
+}
 
 /**
  * Modal panel that pops in (scale + fade). Sized for landscape phones: never taller than the screen, the body scrolls
@@ -288,6 +369,22 @@ fun PixelDialog(onDismiss: () -> Unit, title: String, modifier: Modifier = Modif
     val cfg = LocalConfiguration.current
     val maxH = (cfg.screenHeightDp - 16).coerceAtLeast(200).dp
     val maxW = (cfg.screenWidthDp - 24).coerceAtLeast(260).dp
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            Surface(Modifier.fillMaxWidth(widthFraction).widthIn(min = minOf(320.dp, maxW), max = maxW).heightIn(max = maxH),
+                shape = RoundedCornerShape(10.dp), color = p.elevated, border = BorderStroke(1.dp, p.border)) {
+                Column(Modifier.padding(18.dp)) {
+                    Text(title, color = p.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(12.dp))
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { content() }
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically, content = buttons)
+                }
+            }
+        }
+        return
+    }
     val body = @Composable {
         val state = remember { MutableTransitionState(false).apply { targetState = true } }
         val reduce = LocalReduceMotion.current
@@ -309,7 +406,7 @@ fun PixelDialog(onDismiss: () -> Unit, title: String, modifier: Modifier = Modif
 
 /** Staggered entrance for list/grid items: fades in and rises a few pixels. Disabled with reduced motion. */
 fun Modifier.staggerIn(index: Int): Modifier = composed {
-    if (LocalReduceMotion.current) return@composed this
+    if (!LocalPalette.current.pixel || LocalReduceMotion.current) return@composed this
     val a = remember { Animatable(0f) }
     LaunchedEffect(Unit) { delay(min(index, 12) * 32L); a.animateTo(1f, tween(240, easing = FastOutSlowInEasing)) }
     this.graphicsLayer { alpha = a.value; translationY = (1f - a.value) * 18.dp.toPx() }
@@ -453,6 +550,20 @@ fun PixelScene(modifier: Modifier = Modifier, animate: Boolean = true) {
 /** Square bevelled tile with a large icon above a label (quick actions, menus). */
 @Composable
 fun PixelTile(icon: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = Color.White, enabled: Boolean = true) {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    if (!p.pixel) {
+        val shape = RoundedCornerShape(8.dp)
+        Surface(modifier = modifier.heightIn(min = 68.dp).clip(shape).clickable(enabled = enabled) { MinecraftUiClickSound.play(context); onClick() },
+            shape = shape, color = p.card, border = BorderStroke(1.dp, p.border)) {
+            Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                PixelIcon(icon, size = 22.dp, tint = tint)
+                Spacer(Modifier.height(6.dp))
+                Text(label, color = p.text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        return
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val reduce = LocalReduceMotion.current
@@ -460,7 +571,7 @@ fun PixelTile(icon: String, label: String, onClick: () -> Unit, modifier: Modifi
     val haptic = LocalHapticFeedback.current
     Column(
         modifier
-            .clickable(interaction, null, enabled = enabled, role = Role.Button) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
+            .clickable(interaction, null, enabled = enabled, role = Role.Button) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
             .drawBehind {
                 val d = 4.dp.toPx(); val b = 2.dp.toPx(); val top = d * press
                 drawRect(Px.border, Offset(0f, top), Size(size.width, size.height - top))

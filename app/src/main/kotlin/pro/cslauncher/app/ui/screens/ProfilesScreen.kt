@@ -17,7 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.drawBehind
 import pro.cslauncher.core.profile.RunOutcome
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,7 +81,7 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
                 val installed = pr.effectiveVersionId in ui.installed
                 PixelPanel(Modifier.fillMaxWidth().staggerIn(i).clickable { vm.select(pr.id) }, selected = sel, padding = 8.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PixelSlot(size = 42.dp) { PixelIcon(profileIcon(pr), size = 28.dp) }
+                        PixelSlot(size = 42.dp) { ProfileIconImage(pr, 28.dp) }
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             PixelTitle(pr.name, fontSize = 13.sp)
@@ -170,6 +170,15 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
     val p = LocalPalette.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var customIconId by remember { mutableStateOf<String?>(null) }
+    val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { importProfileIcon(ctx, uri) } }
+            result.onSuccess { customIconId = it; vm.toast("Profile icon updated") }.onFailure { vm.toast(it.message ?: "Could not read image") }
+        }
+    }
     var name by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var snapshots by remember { mutableStateOf(settings.showSnapshots) }
@@ -183,21 +192,25 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
     var directory by remember { mutableStateOf(GameDirMode.ISOLATED) }
     var advanced by remember { mutableStateOf(false) }
     var loaderVersions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var latestLoader by remember { mutableStateOf<String?>(null) }
     var selectedLoader by remember { mutableStateOf<String?>(null) }
+    var loaderMenuExpanded by remember { mutableStateOf(false) }
     var loaderLoading by remember { mutableStateOf(false) }
     var loaderError by remember { mutableStateOf<String?>(null) }
     var runtimes by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(Unit) { runtimes = withContext(Dispatchers.IO) { Services.runtimes.list().map { it.id } } }
     LaunchedEffect(version, kind) {
-        loaderVersions = emptyList(); selectedLoader = null; loaderError = null
+        loaderVersions = emptyList(); latestLoader = null; selectedLoader = null; loaderMenuExpanded = false; loaderError = null
         if (kind == NewKind.FABRIC || kind == NewKind.QUILT) {
             loaderLoading = true
             try {
-                loaderVersions = withContext(Dispatchers.IO) {
+                val available = withContext(Dispatchers.IO) {
                     pro.cslauncher.core.content.LoaderInstaller(Services.http, Services.dirs)
-                        .versions(LoaderType.valueOf(kind.name), version).map { it.version }
+                        .versions(LoaderType.valueOf(kind.name), version)
                 }
-                selectedLoader = loaderVersions.firstOrNull()
+                loaderVersions = available.map { it.version }
+                latestLoader = available.firstOrNull { it.stable }?.version ?: available.firstOrNull()?.version
+                selectedLoader = latestLoader
                 if (loaderVersions.isEmpty()) loaderError = "No compatible loader for $version"
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { loaderError = e.message ?: "Loader metadata unavailable" }
@@ -213,7 +226,7 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
         PixelButton(if (kind == NewKind.OPTIFINE) "Continue" else "Create", {
             when (kind) {
                 NewKind.OPTIFINE -> onOptiFine(version)
-                else -> { vm.createProfile(name, version, LoaderType.valueOf(kind.name), memory, runtime, renderer, icon, jvm, directory, selectedLoader); onDismiss() }
+                else -> { vm.createProfile(name, version, LoaderType.valueOf(kind.name), memory, runtime, renderer, icon, jvm, directory, selectedLoader, customIconId); onDismiss() }
             }
         }, style = PxStyle.PRIMARY, enabled = version.isNotBlank() && !loaderLoading && loaderError == null && kind.supported && !duplicateName, icon = "check")
     }) {
@@ -260,9 +273,40 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
                 if (!kind.supported) Text("Not installable on this launcher — the button stays disabled rather than pretending to work.", color = p.danger, fontSize = 10.sp, lineHeight = 12.sp)
                 if (loaderLoading) PixelProgress(null)
                 loaderError?.let { Text(it, color = p.danger, fontSize = 11.sp) }
-                if (loaderVersions.isNotEmpty()) ChoiceRow("Loader version", loaderVersions, selectedLoader ?: loaderVersions.first(), label = { it }) { selectedLoader = it }
+                if (loaderVersions.isNotEmpty()) {
+                    if (p.pixel) {
+                        ChoiceRow("Loader version", loaderVersions, selectedLoader ?: loaderVersions.first(), label = { it }) { selectedLoader = it }
+                    } else {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Loader version", color = p.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                if (latestLoader != null) Badge("LATEST STABLE", p.success)
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Box {
+                                PixelButton("${selectedLoader ?: latestLoader ?: "Choose version"}  ▾", { loaderMenuExpanded = true }, Modifier.fillMaxWidth(), icon = "list", height = 40.dp)
+                                DropdownMenu(expanded = loaderMenuExpanded, onDismissRequest = { loaderMenuExpanded = false }) {
+                                    loaderVersions.forEach { loaderVersion ->
+                                        DropdownMenuItem(
+                                            text = { Text(loaderVersion + if (loaderVersion == latestLoader) "  ·  Latest stable" else "") },
+                                            onClick = { selectedLoader = loaderVersion; loaderMenuExpanded = false },
+                                            trailingIcon = if (loaderVersion == selectedLoader) ({ Text("✓", color = p.accent) }) else null,
+                                        )
+                                    }
+                                }
+                            }
+                            Text("The newest stable loader is selected automatically. Tap to see every loader available for Minecraft $version.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp)
+                        }
+                    }
+                }
                 Text("Icon", color = p.textSecondary, fontSize = 11.sp)
-                FlowRowCompat { PROFILE_ICON_CHOICES.forEach { ic -> PixelIconButton(ic, ic, { icon = ic }, style = if (icon == ic) PxStyle.SELECTED else PxStyle.NORMAL, size = 32.dp) } }
+                FlowRowCompat { PROFILE_ICON_CHOICES.forEach { ic -> PixelIconButton(ic, ic, { icon = ic; customIconId = null }, style = if (icon == ic && customIconId == null) PxStyle.SELECTED else PxStyle.NORMAL, size = 32.dp) } }
+                Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (customIconId != null) ProfileIconImage(Profile(name = displayName, versionId = version, iconKey = icon, customIconId = customIconId), 34.dp)
+                    PixelButton(if (customIconId == null) "Choose image" else "Change image", { iconPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp", "image/gif")) }, height = 32.dp, icon = "image")
+                    if (customIconId != null) PixelButton("Remove", { customIconId = null }, style = PxStyle.DANGER, height = 32.dp)
+                }
+                Text("PNG, JPG, WebP or animated GIF · up to 4 MB", color = p.textMuted, fontSize = 9.sp)
                 SwitchRow("Automatic memory", "Recommended ${vm.recommendedHeapMb()} MB", memory == null) { memory = if (it) null else vm.recommendedHeapMb() }
                 memory?.let { m ->
                     SliderRow("RAM", m.toFloat().coerceIn(512f, vm.maxHeapMb().toFloat().coerceAtLeast(513f)), 512f..vm.maxHeapMb().toFloat().coerceAtLeast(513f), format = { "${it.toInt()} MB" }) { memory = (it.toInt() / 64) * 64 }
@@ -284,8 +328,16 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
 fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
     val p = LocalPalette.current
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val original = ui.profiles.profiles.firstOrNull { it.id == id } ?: run { onBack(); return }
     var e by remember(id) { mutableStateOf(original) }
+    val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { importProfileIcon(ctx, uri) } }
+            result.onSuccess { e = e.copy(customIconId = it); vm.toast("Profile icon updated") }.onFailure { vm.toast(it.message ?: "Could not read image") }
+        }
+    }
     val layouts = remember { ControlLayoutStore(Services.dirs.config.resolve("controls")).list() }
     val renderers = remember { Services.renderers.backends }
     val runtimes = remember { runCatching { Services.runtimes.list() }.getOrDefault(emptyList()) }
@@ -304,9 +356,15 @@ fun ProfileEditorScreen(vm: LauncherViewModel, id: String, onBack: () -> Unit) {
                     Text("Icon", color = p.textSecondary, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
                     FlowRowCompat {
                         PROFILE_ICON_CHOICES.forEach { ic ->
-                            PixelIconButton(ic, ic, { e = e.copy(iconKey = ic) }, style = if (profileIcon(e) == ic) PxStyle.SELECTED else PxStyle.NORMAL, size = 34.dp)
+                            PixelIconButton(ic, ic, { e = e.copy(iconKey = ic, customIconId = null) }, style = if (e.customIconId == null && profileIcon(e) == ic) PxStyle.SELECTED else PxStyle.NORMAL, size = 34.dp)
                         }
                     }
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (e.customIconId != null) ProfileIconImage(e, 34.dp)
+                        PixelButton(if (e.customIconId == null) "Choose image" else "Change image", { iconPicker.launch(arrayOf("image/png", "image/jpeg", "image/webp", "image/gif")) }, height = 32.dp, icon = "image")
+                        if (e.customIconId != null) PixelButton("Remove", { e = e.copy(customIconId = null) }, style = PxStyle.DANGER, height = 32.dp)
+                    }
+                    Text("PNG, JPG, WebP or animated GIF · up to 4 MB", color = p.textMuted, fontSize = 9.sp)
                 }
                 PanelSection("Memory", "chart") {
                     val maxHeap = vm.maxHeapMb()

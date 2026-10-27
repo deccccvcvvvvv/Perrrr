@@ -75,8 +75,9 @@ import java.io.File
 /** Small secondary action (replaces Material text buttons in the pixel theme). */
 @Composable fun LinkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: String? = null, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true) {
     val p = LocalPalette.current
+    val ctx = LocalContext.current
     if (p.pixel) PixelButton(text, onClick, modifier, style, enabled, icon, height = 32.dp, fontSize = 11.sp)
-    else TextButton(onClick = onClick, modifier = modifier, enabled = enabled) { Text(text, color = if (style == PxStyle.DANGER) p.danger else p.accent) }
+    else TextButton(onClick = { MinecraftUiClickSound.play(ctx); onClick() }, modifier = modifier, enabled = enabled) { Text(text, color = if (style == PxStyle.DANGER) p.danger else p.accent) }
 }
 
 /** Theme-aware single-line text input. */
@@ -116,7 +117,8 @@ import java.io.File
 
 @Composable fun ClickRow(title: String, subtitle: String? = null, onClick: () -> Unit, trailing: @Composable () -> Unit = {}) {
     val p = LocalPalette.current
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+    val ctx = LocalContext.current
+    Row(Modifier.fillMaxWidth().clickable { MinecraftUiClickSound.play(ctx); onClick() }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = p.text, fontSize = 13.sp, lineHeight = 16.sp)
             if (subtitle != null) Text(subtitle, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -127,12 +129,13 @@ import java.io.File
 
 @Composable fun SwitchRow(title: String, subtitle: String? = null, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
+    val ctx = LocalContext.current
     Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 10.dp)) {
             Text(title, color = if (enabled) p.text else p.textMuted, fontSize = 13.sp, lineHeight = 16.sp)
             if (subtitle != null) Text(subtitle, color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
         }
-        if (p.pixel) PixelToggle(checked, onChange, enabled = enabled) else Switch(checked = checked, onCheckedChange = onChange, enabled = enabled,
+        if (p.pixel) PixelToggle(checked, onChange, enabled = enabled) else Switch(checked = checked, onCheckedChange = { MinecraftUiClickSound.play(ctx); onChange(it) }, enabled = enabled,
             colors = SwitchDefaults.colors(checkedTrackColor = p.accent, checkedThumbColor = p.background, uncheckedTrackColor = p.secondarySurface))
     }
 }
@@ -173,9 +176,10 @@ import java.io.File
         }) { Text(text, color = p.textSecondary, fontSize = 12.sp, lineHeight = 15.sp) }
         return
     }
+    val ctx = LocalContext.current
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Text(text) },
-        confirmButton = { TextButton(onClick = { onConfirm(); onDismiss() }) { Text(confirm, color = if (destructive) p.danger else p.accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = p.textSecondary) } },
+        confirmButton = { TextButton(onClick = { MinecraftUiClickSound.play(ctx); onConfirm(); onDismiss() }) { Text(confirm, color = if (destructive) p.danger else p.accent) } },
+        dismissButton = { TextButton(onClick = { MinecraftUiClickSound.play(ctx); onDismiss() }) { Text("Cancel", color = p.textSecondary) } },
         containerColor = p.elevated, titleContentColor = p.text, textContentColor = p.textSecondary)
 }
 
@@ -204,16 +208,27 @@ fun copyToCache(ctx: Context, uri: Uri): File {
 /** Theme-aware button: pixel bevel in the pixel theme, Material otherwise. */
 @Composable fun AppButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, style: PxStyle = PxStyle.NORMAL, enabled: Boolean = true, icon: String? = null) {
     val p = LocalPalette.current
+    val ctx = LocalContext.current
     if (p.pixel) { PixelButton(text, onClick, modifier, style, enabled, icon); return }
+    val click = { if (enabled) { MinecraftUiClickSound.play(ctx); onClick() } }
+    val content: @Composable RowScope.() -> Unit = { Text(text) }
     when (style) {
-        PxStyle.PRIMARY -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.background)) { Text(text) }
-        PxStyle.DANGER -> OutlinedButton(onClick, modifier, enabled) { Text(text, color = p.danger) }
-        else -> OutlinedButton(onClick, modifier, enabled) { Text(text, color = p.text) }
+        PxStyle.PRIMARY -> Button(click, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = Color.White), content = content)
+        PxStyle.SELECTED -> FilledTonalButton(click, modifier, enabled, colors = ButtonDefaults.filledTonalButtonColors(containerColor = p.selected, contentColor = p.text), content = content)
+        PxStyle.DANGER -> OutlinedButton(click, modifier, enabled, border = androidx.compose.foundation.BorderStroke(1.dp, p.danger), content = content)
+        else -> OutlinedButton(click, modifier, enabled, content = content)
     }
 }
 
 /** Small square "badge" (e.g. Installed). */
 @Composable fun Badge(text: String, color: Color = Color(0xFF6CC349), icon: String? = null) {
+    val p = LocalPalette.current
+    if (!p.pixel) {
+        Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = 0.16f)) {
+            Text(text, color = color, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+        }
+        return
+    }
     Row(Modifier.height(18.dp).background(Color(0xFF1E1E1F)).padding(2.dp).background(color.copy(alpha = 0.22f)).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         if (icon != null) { PixelIcon(icon, size = 10.dp, tint = color); Spacer(Modifier.width(3.dp)) }
         Text(text, color = color, fontSize = 9.sp, lineHeight = 11.sp, fontFamily = Monocraft, maxLines = 1)

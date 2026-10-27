@@ -333,7 +333,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         runtimeId: String? = settings.value.defaultRuntimeId,
         rendererId: String = settings.value.defaultRenderer,
         icon: String = "grass", jvmArgs: String = settings.value.defaultJvmArgs,
-        directory: GameDirMode = GameDirMode.ISOLATED, loaderVersion: String? = null) = io {
+        directory: GameDirMode = GameDirMode.ISOLATED, loaderVersion: String? = null, customIconId: String? = null) = io {
         // Never advertise a loader the core cannot actually install (no installer processors).
         require(loader != LoaderType.FORGE && loader != LoaderType.NEOFORGE) {
             "Forge/NeoForge need installer processors that patch the client; this launcher cannot install them yet. Choose Vanilla, Fabric, Quilt or OptiFine."
@@ -344,7 +344,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
         val p = Profile(name = displayName,
             versionId = versionId, memoryMb = memoryMb, runtimeId = runtimeId,
-            rendererId = rendererId, iconKey = icon, jvmArgs = jvmArgs, gameDirMode = directory,
+            rendererId = rendererId, iconKey = icon, customIconId = customIconId, jvmArgs = jvmArgs, gameDirMode = directory,
             fullscreen = settings.value.defaultFullscreen,
             resolutionWidth = settings.value.defaultResolutionWidth,
             resolutionHeight = settings.value.defaultResolutionHeight,

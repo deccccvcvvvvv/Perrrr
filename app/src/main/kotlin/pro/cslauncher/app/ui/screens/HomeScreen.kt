@@ -39,6 +39,11 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
     var pickProfile by remember { mutableStateOf(false) }
     val splash = remember { SPLASHES.random() }
 
+    if (!p.pixel) {
+        MinecraftLauncherHome(vm, onOpen, onTab)
+        return
+    }
+
     Row(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // ------------------------------------------------ left: title, profile, play
         Column(Modifier.weight(1.1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
@@ -46,7 +51,7 @@ fun HomeScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) ->
                 val job = jobs["task:profile-${instance.id}"]
                 PixelPanel(Modifier.fillMaxWidth().padding(bottom = 5.dp), selected = instance.id == profile?.id, padding = 6.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PixelIcon(profileIcon(instance), size = 24.dp)
+                        ProfileIconImage(instance, 24.dp)
                         Spacer(Modifier.width(6.dp))
                         Column(Modifier.weight(1f)) {
                             Text(instance.name, color = p.text, fontSize = 12.sp)

@@ -107,16 +107,26 @@ class RuntimeProfileAccountTest {
         val reloaded = SettingsStore(f).state.value
         assertEquals(ThemeChoice.GLASSMORPHISM, reloaded.theme); assertTrue(reloaded.reduceMotion)
         Files.writeString(f, "{broken")
-        assertEquals(ThemeChoice.PIXEL, SettingsStore(f).state.value.theme)
+        assertEquals(ThemeChoice.MINECRAFT_LAUNCHER, SettingsStore(f).state.value.theme)
     }
 
-    @Test fun settingsV1MigratesOnceToPixelThemeAndKeepsOtherValues() {
+    @Test fun settingsV1PreservesAnExplicitNonDefaultTheme() {
         val f = tempDir().resolve("settings.json")
         Files.writeString(f, """{"schemaVersion":1,"theme":"GLASSMORPHISM","reduceMotion":true,"downloadConcurrency":3}""")
         val s = SettingsStore(f).state.value
-        assertEquals(ThemeChoice.PIXEL, s.theme); assertEquals(2, s.schemaVersion); assertTrue(s.reduceMotion); assertEquals(3, s.downloadConcurrency)
+        assertEquals(ThemeChoice.GLASSMORPHISM, s.theme); assertEquals(3, s.schemaVersion); assertTrue(s.reduceMotion); assertEquals(3, s.downloadConcurrency)
         SettingsStore(f).update { it.copy(theme = ThemeChoice.DARK_GRAPHITE) }
         assertEquals(ThemeChoice.DARK_GRAPHITE, SettingsStore(f).state.value.theme, "a choice made after migration is kept")
+    }
+
+    @Test fun settingsV2PixelDefaultMigratesToCleanLauncherAndStopsMotion() {
+        val f = tempDir().resolve("settings.json")
+        Files.writeString(f, """{"schemaVersion":2,"theme":"PIXEL","animatedBackground":true,"reduceMotion":false}""")
+        val s = SettingsStore(f).state.value
+        assertEquals(ThemeChoice.MINECRAFT_LAUNCHER, s.theme)
+        assertEquals(3, s.schemaVersion)
+        assertFalse(s.animatedBackground)
+        assertTrue(s.reduceMotion)
     }
 
     @Test fun memoryAdvisorNeverUsesAllRam() {

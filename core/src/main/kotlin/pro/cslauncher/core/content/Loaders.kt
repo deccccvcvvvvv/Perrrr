@@ -11,6 +11,17 @@ import java.net.URLEncoder
 data class LoaderVersion(val version: String, val stable: Boolean)
 data class LoaderSupport(val supported: Boolean, val reason: String)
 
+/** Numeric component comparison (0.10 sorts newer than 0.9), with upstream text as a stable tie-breaker. */
+private fun compareLoaderNumbers(left: String, right: String): Int {
+    fun parts(value: String) = Regex("\\d+").findAll(value.substringBefore('+')).mapNotNull { it.value.toIntOrNull() }.toList()
+    val a = parts(left); val b = parts(right)
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
+        if (x != y) return x.compareTo(y)
+    }
+    return left.compareTo(right, ignoreCase = true)
+}
+
 /**
  * Installs mod loaders by writing their launcher profile JSON (inheritsFrom the vanilla version).
  * Fabric and Quilt publish launcher-ready profiles, so installation is a verified metadata download plus library
@@ -34,7 +45,14 @@ class LoaderInstaller(private val http: HttpTransport, private val dirs: Launche
         val base = meta(type) ?: return emptyList()
         val arr = CsJson.parseToJsonElement(http.getText("$base/versions/loader/${URLEncoder.encode(mcVersion, "UTF-8")}")).jsonArray
         return arr.mapNotNull { el -> val l = el.jsonObject.obj("loader") ?: return@mapNotNull null
-            LoaderVersion(l.str("version") ?: return@mapNotNull null, l.bool("stable") ?: !(l.str("version")!!.contains("beta"))) }
+            val version = l.str("version") ?: return@mapNotNull null
+            LoaderVersion(version, l.bool("stable") ?: !version.contains("beta", ignoreCase = true))
+        }.sortedWith { a, b ->
+            when {
+                a.stable != b.stable -> if (a.stable) -1 else 1
+                else -> compareLoaderNumbers(b.version, a.version)
+            }
+        }
     }
 
     /** Writes versions/<id>/<id>.json and returns the new version id. Libraries are fetched by the regular installer. */

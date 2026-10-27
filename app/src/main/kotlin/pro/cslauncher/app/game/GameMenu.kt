@@ -2,6 +2,7 @@ package pro.cslauncher.app.game
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -17,7 +18,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,10 @@ fun GameMenu(host: GameMenuHost, open: Boolean, initialTab: GameMenuTab = GameMe
     LaunchedEffect(open, initialTab) { if (open) tab = initialTab }
     var stats by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     LaunchedEffect(open) { while (open && isActive) { stats = withContext(Dispatchers.Default) { runCatching { host.infoLines() }.getOrDefault(emptyList()) }; delay(1000) } }
+    if (!LocalPalette.current.pixel) {
+        CleanGameMenu(host, open, stats, initialTab)
+        return
+    }
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(open, enter = fadeIn(tween(if (reduce) 0 else 160)), exit = fadeOut(tween(if (reduce) 0 else 140))) {
             Box(Modifier.fillMaxSize().background(Color(0x8C000000)).clickable(remember { MutableInteractionSource() }, null) { host.closeMenu() })
@@ -271,7 +276,7 @@ private enum class LogSource(val label: String) { GAME("Game"), RENDERER("Render
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LogTab(host: GameMenuHost) {
+internal fun LogTab(host: GameMenuHost) {
     val ctx = LocalContext.current
     var source by remember { mutableStateOf(LogSource.GAME) }
     var problemsOnly by remember { mutableStateOf(false) }

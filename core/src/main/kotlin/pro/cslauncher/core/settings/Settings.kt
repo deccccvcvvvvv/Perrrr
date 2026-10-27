@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /** PIXEL is the blocky, Pocket-Edition-inspired default; the earlier smooth themes stay available. */
-@Serializable enum class ThemeChoice { PIXEL, DARK_GRAPHITE, GLASSMORPHISM }
+@Serializable enum class ThemeChoice { MINECRAFT_LAUNCHER, PIXEL, DARK_GRAPHITE, GLASSMORPHISM }
 @Serializable enum class PerformancePreset { BATTERY_SAVER, BALANCED, PERFORMANCE, CUSTOM }
 @Serializable enum class CursorMode { DESKTOP, TOUCHPAD, IMMERSIVE, SMART }
 @Serializable enum class CursorShape { ARROW, CIRCLE, CROSSHAIR, DOT }
@@ -55,13 +55,14 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
 
 @Serializable data class LauncherSettings(
     val schemaVersion: Int = LauncherSettings.SCHEMA,
-    val theme: ThemeChoice = ThemeChoice.PIXEL,
+    val theme: ThemeChoice = ThemeChoice.MINECRAFT_LAUNCHER,
     /** Animated pixel landscape behind the launcher (paused when hidden, static with reduced motion). */
-    val animatedBackground: Boolean = true,
+    val animatedBackground: Boolean = false,
     /** Hide the status and navigation bars in the launcher (swipe from an edge to show them briefly). */
     val fullscreenLauncher: Boolean = true,
     val reduceTransparency: Boolean = false,
-    val reduceMotion: Boolean = false,
+    val reduceMotion: Boolean = true,
+    val uiClickSounds: Boolean = true,
     val downloadConcurrency: Int = 6,
     val downloadAttempts: Int = 3,
     val showSnapshots: Boolean = false,
@@ -86,9 +87,18 @@ val CursorSettings.pointerOnTouch: Boolean get() = mode != CursorMode.IMMERSIVE
     val keepLauncherLogsDays: Int = 14,
 ) {
     companion object {
-        const val SCHEMA = 2
-        /** v1 → v2: the redesigned pixel UI becomes the theme once; users can switch back in Settings. */
-        fun migrate(s: LauncherSettings): LauncherSettings = if (s.schemaVersion >= SCHEMA) s else s.copy(schemaVersion = SCHEMA, theme = ThemeChoice.PIXEL)
+        const val SCHEMA = 3
+        /** v3 moves the old default pixel UI to the clean launcher theme and disables motion-heavy defaults. */
+        fun migrate(s: LauncherSettings): LauncherSettings {
+            if (s.schemaVersion >= SCHEMA) return s
+            val wasPixelDefault = s.theme == ThemeChoice.PIXEL
+            return s.copy(
+                schemaVersion = SCHEMA,
+                theme = if (wasPixelDefault) ThemeChoice.MINECRAFT_LAUNCHER else s.theme,
+                animatedBackground = if (wasPixelDefault) false else s.animatedBackground,
+                reduceMotion = if (wasPixelDefault) true else s.reduceMotion,
+            )
+        }
     }
 }
 

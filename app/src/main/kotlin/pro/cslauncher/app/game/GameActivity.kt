@@ -120,7 +120,7 @@ class GameActivity : ComponentActivity(), SurfaceHolder.Callback, NativeBridge.L
             visibility = View.GONE
             setContent {
                 val s = live.value
-                pro.cslauncher.app.ui.theme.CsTheme(pro.cslauncher.core.settings.ThemeChoice.PIXEL, s.reduceTransparency, s.reduceMotion) {
+                pro.cslauncher.app.ui.theme.CsTheme(pro.cslauncher.core.settings.ThemeChoice.MINECRAFT_LAUNCHER, s.reduceTransparency, s.reduceMotion) {
                     GameMenu(this@GameActivity, menuOpen.value, menuTab.value)
                 }
             }

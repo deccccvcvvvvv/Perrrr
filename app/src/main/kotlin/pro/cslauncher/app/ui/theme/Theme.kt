@@ -46,6 +46,14 @@ val Glassmorphism = CsPalette(
     textMuted = Color(0xFF7D8290), accent = Color(0xFFC6CDD8), selected = Color(0x12FFFFFF), highlight = Color(0x12FFFFFF),
 )
 
+/** Clean dark launcher palette with restrained grass-green actions and standard Android typography. */
+val MinecraftLauncherPalette = CsPalette(
+    glass = false, background = Color(0xFF111418), surfaceSecondary = Color(0xFF171B20), elevated = Color(0xFF20252B), card = Color(0xFF1B2025),
+    secondarySurface = Color(0xFF2A3038), border = Color(0xFF343B43), text = Color(0xFFF3F5F7), textSecondary = Color(0xFFB8C0C9),
+    textMuted = Color(0xFF87919C), accent = Color(0xFF55A53B), selected = Color(0xFF2B4026), highlight = Color(0xFF3A424A),
+    danger = Color(0xFFEF6868), success = Color(0xFF75C85A), warning = Color(0xFFE2B86B),
+)
+
 /** Blocky stone-and-grass palette inspired by Minecraft's mobile menus (original colour choices). */
 val PixelPalette = CsPalette(
     glass = false, background = Color(0xFF1B1B1C), surfaceSecondary = Color(0xFF242425), elevated = Color(0xFF313233), card = Color(0xFF313233),
@@ -75,7 +83,7 @@ private fun pixelTypography(): Typography {
 
 @Composable
 fun CsTheme(choice: ThemeChoice, reduceTransparency: Boolean, reduceMotion: Boolean, content: @Composable () -> Unit) {
-    val p = when (choice) { ThemeChoice.GLASSMORPHISM -> Glassmorphism; ThemeChoice.DARK_GRAPHITE -> DarkGraphite; ThemeChoice.PIXEL -> PixelPalette }
+    val p = when (choice) { ThemeChoice.MINECRAFT_LAUNCHER -> MinecraftLauncherPalette; ThemeChoice.GLASSMORPHISM -> Glassmorphism; ThemeChoice.DARK_GRAPHITE -> DarkGraphite; ThemeChoice.PIXEL -> PixelPalette }
     val glassOk = p.glass && !reduceTransparency && Build.VERSION.SDK_INT >= 31
     val scheme = darkColorScheme(
         primary = p.accent, onPrimary = if (p.pixel) Color.White else p.background, secondary = p.textSecondary, background = p.background, onBackground = p.text,
@@ -123,7 +131,7 @@ fun CsBackground(modifier: Modifier = Modifier, animated: Boolean = true, conten
 fun CsCard(modifier: Modifier = Modifier, selected: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val p = LocalPalette.current
     if (p.pixel) { PixelPanel(modifier, selected = selected, content = content); return }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(if (p.glass) 18.dp else 8.dp)
     val bg = when {
         selected -> p.selected.copy(alpha = if (p.glass) 0.22f else 1f)
         p.glass && LocalGlassEnabled.current -> p.card.copy(alpha = 0.72f)

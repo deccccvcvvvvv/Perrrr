@@ -39,6 +39,8 @@ data class Profile(
     val fullscreen: Boolean = false,
     val env: Map<String, String> = emptyMap(),
     val iconKey: String = "grass",
+    /** App-private copied image filename (PNG/JPEG/WebP/GIF), never a content URI or absolute path. */
+    val customIconId: String? = null,
     val installationState: String = "existing",
     val installationError: String? = null,
 
@@ -65,6 +67,7 @@ object ProfileValidator {
         runCatching { LauncherDirs.checkId(p.id) }.onFailure { out += ValidationProblem("id", "Invalid profile identifier") }
         if (p.name.isBlank()) out += ValidationProblem("name", "Profile name cannot be empty")
         if (p.name.length > 64) out += ValidationProblem("name", "Profile name is longer than 64 characters")
+        p.customIconId?.let { if (!Regex("^[a-fA-F0-9-]{36}\\.(png|jpg|webp|gif)$", RegexOption.IGNORE_CASE).matches(it)) out += ValidationProblem("customIconId", "Invalid custom profile image reference") }
         runCatching { LauncherDirs.checkId(p.versionId) }.onFailure { out += ValidationProblem("versionId", "Invalid version id") }
         p.memoryMb?.let { if (it < 512) out += ValidationProblem("memoryMb", "At least 512 MB is required") }
         if (p.gameDirMode == GameDirMode.CUSTOM && p.customGameDir.isNullOrBlank()) out += ValidationProblem("customGameDir", "Choose a game directory")
@@ -187,7 +190,7 @@ class ProfileStore(private val file: Path, private val dirs: LauncherDirs) {
 
     fun export(id: String): String {
         val p = load().profiles.first { it.id == id }
-        val o = CsJson.encodeToJsonElement(Profile.serializer(), p.copy(lastRun = null, rendererMemo = null, lastPlayedAtMs = null)).jsonObject
+        val o = CsJson.encodeToJsonElement(Profile.serializer(), p.copy(lastRun = null, rendererMemo = null, lastPlayedAtMs = null, customIconId = null)).jsonObject
         return CsJson.encodeToString(JsonObject.serializer(), JsonObject(mapOf("format" to JsonPrimitive("cslauncher-profile"), "formatVersion" to JsonPrimitive(1), "profile" to o)))
     }
 
@@ -198,7 +201,7 @@ class ProfileStore(private val file: Path, private val dirs: LauncherDirs) {
         val p = CsJson.decodeFromJsonElement(Profile.serializer(), root.obj("profile") ?: error("Missing profile"))
         // New identity; custom directories from another device are not trusted.
         val imported = p.copy(id = UUID.randomUUID().toString(), createdAtMs = System.currentTimeMillis(),
-            gameDirMode = if (p.gameDirMode == GameDirMode.CUSTOM) GameDirMode.ISOLATED else p.gameDirMode, customGameDir = null)
+            gameDirMode = if (p.gameDirMode == GameDirMode.CUSTOM) GameDirMode.ISOLATED else p.gameDirMode, customGameDir = null, customIconId = null)
         upsert(imported); return imported
     }
 
