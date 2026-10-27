@@ -80,6 +80,26 @@ object ImageCache {
     }
 }
 
+@Composable
+fun RemoteCover(url: String?, modifier: Modifier = Modifier, fallbackIcon: String = "grass") {
+    val ctx = LocalContext.current
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier) {
+        val targetPx = with(density) { maxOf(maxWidth, maxHeight).roundToPx().coerceIn(1, 2048) }
+        val img by produceState(ImageCache.peek(url), url, targetPx) {
+            if (url != null && value == null) value = ImageCache.load(ctx.applicationContext, url, targetPx)
+        }
+        val bitmap = img
+        if (bitmap != null) {
+            Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, filterQuality = FilterQuality.Low)
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                PixelIcon(fallbackIcon, size = 44.dp, tint = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.72f))
+            }
+        }
+    }
+}
+
 /** Remote image with a pixel-icon placeholder; tiny sources are scaled with nearest-neighbour to stay crisp. */
 @Composable
 fun RemoteImage(url: String?, size: Dp, modifier: Modifier = Modifier, fallbackIcon: String = "image") {

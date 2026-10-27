@@ -167,7 +167,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                NavRail(tab, overlay == null, activeJobs) { t -> overlay = null; tab = t }
+                NavRail(tab, overlay, activeJobs, onSelect = { t -> overlay = null; tab = t }, onOpen = { overlay = it })
                 ScreenArea(Modifier.weight(1f).fillMaxHeight()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Vertical)))
             }
@@ -177,40 +177,59 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
 }
 
 /**
- * Left navigation rail sized for landscape phones: the background reaches the screen edge (under a notch), the items sit
- * inside the safe area and share the available height so all five tabs always fit (it only scrolls on very short windows).
+ * Launcher sidebar with the Home/Installations/content destinations. Pixel theme keeps its compact icon rail.
  */
 @Composable
-internal fun NavRail(selected: Tab, highlight: Boolean, activeJobs: Int, onSelect: (Tab) -> Unit) {
+internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
     val p = LocalPalette.current
     val context = androidx.compose.ui.platform.LocalContext.current
     if (!p.pixel) {
-        Column(Modifier.fillMaxHeight().width(116.dp).background(p.surfaceSecondary).padding(horizontal = 8.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PixelIcon("grass", size = 23.dp, tint = p.accent)
-                    Spacer(Modifier.width(7.dp))
-                    Column {
-                        Text("CS Launcher", color = p.text, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
-                        Text("Java Edition", color = p.textMuted, fontSize = 9.sp, maxLines = 1)
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Tab.entries.forEach { t ->
-                    val sel = t == selected && highlight
-                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                        .background(if (sel) p.selected else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(7.dp))
-                        .clickable { pro.cslauncher.app.ui.theme.MinecraftUiClickSound.play(context); onSelect(t) }
-                        .padding(horizontal = 10.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PixelIcon(t.icon, size = 18.dp, tint = if (sel) p.accent else p.textSecondary)
-                        Spacer(Modifier.width(9.dp))
-                        Text(t.label, color = if (sel) p.text else p.textSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                        if (t == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = p.accent, fontSize = 10.sp)
-                    }
+        data class Destination(val label: String, val icon: String, val tab: Tab? = null, val section: ContentSection? = null)
+        val destinations = listOf(
+            Destination("Home", "home", tab = Tab.HOME),
+            Destination("Installations", "grass", tab = Tab.PROFILES),
+            Destination("Mods", "pickaxe", section = ContentSection.MODS),
+            Destination("Resource Packs", "painting", section = ContentSection.RESOURCE_PACKS),
+            Destination("Worlds", "world", section = ContentSection.WORLDS),
+            Destination("Downloads", "download", tab = Tab.DOWNLOADS),
+            Destination("Settings", "settings", tab = Tab.SETTINGS),
+        )
+        Column(Modifier.fillMaxHeight().width(156.dp).background(Color(0xFF10151A))
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical))
+            .padding(horizontal = 10.dp, vertical = 10.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                PixelIcon("grass", size = 31.dp)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("CS LAUNCHER", color = p.text, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1)
+                    Text("PRO · JAVA EDITION", color = p.textMuted, fontSize = 8.sp, maxLines = 1)
                 }
             }
-            Text("CS Launcher · Android", color = p.textMuted, fontSize = 9.sp, modifier = Modifier.padding(start = 8.dp, bottom = 2.dp))
+            Spacer(Modifier.height(12.dp))
+            destinations.forEach { destination ->
+                val isSelected = when {
+                    destination.tab != null && activeOverlay == null -> selected == destination.tab
+                    destination.tab == Tab.PROFILES && activeOverlay is Overlay.EditProfile -> true
+                    destination.section != null && activeOverlay is Overlay.Content -> destination.section == activeOverlay.section
+                    else -> false
+                }
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                    .background(if (isSelected) Color(0xFF263C2B) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .clickable {
+                        pro.cslauncher.app.ui.theme.MinecraftUiClickSound.play(context)
+                        if (destination.tab != null) onSelect(destination.tab)
+                        else destination.section?.let { onOpen(Overlay.Content(it)) }
+                    }
+                    .padding(horizontal = 10.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PixelIcon(destination.icon, size = 20.dp, tint = if (isSelected) Color(0xFF73D348) else Color(0xFFD0D4D8))
+                    Spacer(Modifier.width(11.dp))
+                    Text(destination.label, color = if (isSelected) Color.White else Color(0xFFE0E3E6), fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                    if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Official Minecraft Java news", color = Color(0xFF8C979F), fontSize = 8.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+            Text("CS Launcher · Android", color = Color(0xFF8C979F), fontSize = 8.sp, modifier = Modifier.padding(start = 8.dp, bottom = 3.dp))
         }
         return
     }
@@ -232,7 +251,7 @@ internal fun NavRail(selected: Tab, highlight: Boolean, activeJobs: Int, onSelec
         ) {
             Box(Modifier.height(logo), contentAlignment = Alignment.Center) { PixelIcon("grass", size = 26.dp) }
             Tab.entries.forEach { t ->
-                val sel = t == selected && highlight
+                val sel = t == selected && activeOverlay == null
                 val lift by animateFloatAsState(if (sel) 1f else 0f, if (reduce) snap() else spring(dampingRatio = 0.55f, stiffness = 500f), label = "rail")
                 val busy = t == Tab.DOWNLOADS && activeJobs > 0
                 val bob = if (busy && !reduce) rememberInfiniteTransition(label = "dl").animateFloat(0f, 1f, infiniteRepeatable(tween(700, easing = LinearEasing)), label = "bob").value else 0f

@@ -34,7 +34,7 @@ class PixelScreenshotTest {
         CsTheme(ThemeChoice.PIXEL, reduceTransparency = false, reduceMotion = true) {
             CsBackground(animated = false) {
                 Row(Modifier.fillMaxSize()) {
-                    NavRail(tab, true, if (tab == Tab.DOWNLOADS) 2 else 0) {}
+                    NavRail(tab, null, if (tab == Tab.DOWNLOADS) 2 else 0, onSelect = {}, onOpen = {})
                     Box(Modifier.weight(1f).fillMaxHeight()) { content() }
                 }
             }
