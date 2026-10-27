@@ -65,7 +65,7 @@ class MicrosoftLegacyAuthenticatorTest {
 
     @Test fun legacyAccountsPassTheBundledClientIdIntoMinecraftLaunchArguments() {
         val secrets = InMemorySecretStore()
-        val repository = AccountRepository(temp.newFile("accounts.json").toPath(), secrets)
+        val repository = AccountRepository(temp.root.toPath().resolve("accounts.json"), secrets)
         val account = Account(
             id = "microsoft-player",
             type = AccountType.MICROSOFT,
