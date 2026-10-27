@@ -115,9 +115,13 @@ jobs:
           mv "$SIGNED_APK" "$APK"
           rm -f "$V1_APK"
           jarsigner -verify -certs "$APK"
+          # minSdk is 26, so apksigner's default verifier omits the legacy v1 check.
+          # Verify v1 against API 23 explicitly, then verify the real supported API range normally.
+          V1_VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs --min-sdk-version 23 "$APK")"
+          printf '%s\n' "$V1_VERIFY_OUTPUT"
+          grep -Fq 'Verified using v1 scheme (JAR signing): true' <<< "$V1_VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v1 signature"; exit 1; }
           VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK")"
           printf '%s\n' "$VERIFY_OUTPUT"
-          grep -Fq 'Verified using v1 scheme (JAR signing): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v1 signature"; exit 1; }
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v2 signature"; exit 1; }
 
       - name: Native dependency check (every DT_NEEDED of APK libs, runtimes and components resolves)
