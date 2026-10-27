@@ -44,7 +44,7 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                 if (ui.accounts.accounts.isEmpty()) PixelPanel(Modifier.fillMaxWidth()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { PixelIcon("user_add", size = 28.dp); Spacer(Modifier.width(10.dp)); Text("No account yet. Sign in with Microsoft or add an offline profile.", color = p.textSecondary, fontSize = 13.sp) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { PixelIcon("user_add", size = 28.dp); Spacer(Modifier.width(10.dp)); Text("No account yet. Add Microsoft, Ely.by or a local offline account.", color = p.textSecondary, fontSize = 13.sp) }
                 }
                 ui.accounts.accounts.forEachIndexed { i, a ->
                     val active = a.id == ui.accounts.activeId
@@ -74,7 +74,7 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                         MsaState.Idle, is MsaState.Done -> {
                             if (s is MsaState.Done) Text("Signed in as ${s.name}", color = p.success, fontSize = 13.sp)
                             Text("Sign in with the Microsoft account that owns Minecraft: Java Edition. You enter the code on Microsoft's own page; the launcher never sees your password.", color = p.textSecondary, fontSize = 11.sp, lineHeight = 13.sp)
-                            Text("Sign-in opens in a Chrome Custom Tab (a real, isolated browser tab), not an embedded WebView: Microsoft's identity platform forbids embedded WebViews for OAuth. No password or token is stored by the launcher.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text("Microsoft sign-in opens in a secure browser tab. The launcher never receives your Microsoft password; session tokens are stored encrypted on this device.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 4.dp))
                             Spacer(Modifier.height(8.dp)); PixelButton("Sign in with Microsoft", { vm.startMicrosoft() }, style = PxStyle.PRIMARY, icon = "user_add", height = 36.dp)
                         }
                         is MsaState.Code -> {
@@ -100,7 +100,11 @@ fun AccountsScreen(vm: LauncherViewModel, onBack: () -> Unit) {
                     PixelButton("Sign in to Ely.by", {
                         vm.addEly(elyName, elyPassword, elyOtp); elyPassword = ""; elyOtp = ""
                     }, enabled = elyName.isNotBlank() && elyPassword.isNotEmpty(), height = 36.dp)
-                    Text("Ely.by servers use a separate identity from Microsoft. Passwords are never saved.", color = p.textMuted, fontSize = 11.sp)
+                    Text("Ely.by is a separate sign-in provider. If 2FA is enabled, enter its current code above. Your password is sent to Ely.by over HTTPS for sign-in only and is not saved; the session is stored encrypted on this device.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp)
+                    PixelButton("Create an Ely.by account", {
+                        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://account.ely.by/register"))) }
+                            .onFailure { vm.toast("Could not open the browser") }
+                    }, height = 32.dp, fontSize = 10.sp)
                 }
                 Spacer(Modifier.height(10.dp))
                 PixelPanel(Modifier.fillMaxWidth()) {

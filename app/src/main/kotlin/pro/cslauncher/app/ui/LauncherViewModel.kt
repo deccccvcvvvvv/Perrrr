@@ -27,6 +27,7 @@ import pro.cslauncher.core.perf.PerformanceAdvisor
 import pro.cslauncher.core.profile.*
 import pro.cslauncher.core.settings.LauncherSettings
 import pro.cslauncher.core.util.CsJson
+import pro.cslauncher.core.util.FsUtil
 
 import java.io.File
 import java.nio.file.Files
@@ -361,7 +362,7 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
             val dir = p.gameDir(s.dirs)
             Files.createDirectories(dir)
             require(Files.isWritable(dir)) { "Instance directory is not writable" }
-            require(Files.getFileStore(dir).usableSpace > 256L * 1024 * 1024) { "Less than 256 MB free in instance storage" }
+            require(FsUtil.usableSpace(dir) > 256L * 1024 * 1024) { "Less than 256 MB free in instance storage" }
             val manifest = s.manifests.load()
             installVersion(p.versionId, manifest)
             if (p.loader != null) {

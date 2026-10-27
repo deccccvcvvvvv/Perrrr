@@ -90,7 +90,7 @@ class AccountRepository(private val file: Path, private val secrets: SecretStore
 
 class AuthException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-data class DeviceCode(val userCode: String, val verificationUri: String, val deviceCode: String, val expiresInSec: Int, val intervalSec: Int)
+data class DeviceCode(val userCode: String, val verificationUri: String, val deviceCode: String, val expiresInSec: Int, var intervalSec: Int)
 data class MsaTokens(val accessToken: String, val refreshToken: String)
 data class MinecraftLogin(val accessToken: String, val expiresInSec: Long, val uuid: String, val name: String, val xuid: String?, val ownsGame: Boolean, val skinUrl: String? = null)
 
@@ -119,7 +119,9 @@ class MicrosoftAuthenticator(private val http: HttpTransport, private val client
         val o = parseJsonObject(body, "token response")
         return when (o.str("error")) {
             null -> MsaTokens(o.str("access_token")!!, o.str("refresh_token")!!)
-            "authorization_pending", "slow_down" -> null
+            "authorization_pending" -> null
+            // OAuth device flow requires the client to lengthen its polling interval after slow_down.
+            "slow_down" -> { dc.intervalSec = (dc.intervalSec + 5).coerceAtMost(60); null }
             "authorization_declined" -> throw AuthException("Sign-in was declined")
             "expired_token" -> throw AuthException("The sign-in code expired. Start again.")
             else -> throw AuthException("Sign-in failed: ${o.str("error_description") ?: o.str("error")}")

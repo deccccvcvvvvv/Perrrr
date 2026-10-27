@@ -26,6 +26,8 @@
 - Instance creation validates duplicate display names (case-insensitive) both in the dialog and in the view model, and shows Forge/NeoForge as visibly disabled with the actual reason rather than hiding them or pretending they work. Loader-specific icons were added.
 - Background install notifications now carry the instance name, Minecraft version, loader, real file progress (indeterminate when unknown), queued/running status and the actual failure message; tapping opens Downloads. Failed instance jobs can be retried directly from Downloads, resuming from kept partial files.
 - `docs/CI_BUILD.md` documents the GitHub Actions-only build. No APK is ever assembled locally.
+- Fixed an Android-only instance-install regression: the free-space preflight had regressed to `Files.getFileStore`, which Android's NIO implementation declares but throws at runtime. Instance creation now uses the existing `FsUtil.usableSpace` (`java.io.File.usableSpace`) helper instead. Added regression coverage for existing paths and missing child paths.
+- Clarified the account setup copy: Microsoft passwords remain in Microsoft's browser flow while session tokens are Keystore-encrypted; Ely.by password is sent to Ely.by only for authentication and is not persisted. Added an Ely.by registration link and made Microsoft slow-down polling obey the device-code interval rule.
 
 ## Build method (GitHub Actions only)
 

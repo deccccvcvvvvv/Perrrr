@@ -274,7 +274,7 @@ internal fun CreateProfileDialog(vm: LauncherViewModel, onDismiss: () -> Unit, o
                 Text(if (directory == GameDirMode.ISOLATED) "New isolated folder under ${Services.dirs.instances}" else Services.dirs.sharedGameDir.toString(), color = p.textMuted, fontSize = 10.sp)
                 PixelButton(if (advanced) "Hide advanced" else "Advanced options", { advanced = !advanced }, height = 32.dp)
                 if (advanced) PixelTextField(jvm, { jvm = it }, label = "JVM arguments", singleLine = false)
-                Text("Forge/NeoForge need a desktop installer process and are not supported on Android yet.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Create starts installation now. Downloads continue in the background; failed or interrupted installs can be retried from Downloads.", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }

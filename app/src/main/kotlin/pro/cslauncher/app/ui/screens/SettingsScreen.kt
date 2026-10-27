@@ -176,7 +176,7 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                 Category.ACCOUNTS -> {
                     var id by remember { mutableStateOf(s.msaClientId) }
                     AppTextField(id, { id = it }, "Azure application (client) ID")
-                    Text("Microsoft sign-in needs an Azure app registration approved for Minecraft services (public client, device-code flow). This ID is not a secret; no credentials are embedded in the app.", color = p.textMuted, fontSize = 11.sp)
+                    Text("Microsoft sign-in uses the official browser/device-code flow. Enter this app's own public-client ID, configured for device-code sign-in and approved for Minecraft services. Do not use another launcher's ID. Passwords stay on Microsoft's page; session tokens are stored encrypted on this device.", color = p.textMuted, fontSize = 11.sp, lineHeight = 13.sp)
                     LinkButton("Save", { vm.updateSettings { it.copy(msaClientId = id.trim()) }; vm.toast("Saved") })
                     LinkButton("Manage accounts", { onOpen(Overlay.Accounts) })
                 }
