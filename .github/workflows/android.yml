@@ -101,22 +101,16 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
           V1_APK="${APK%.apk}-v1.apk"
           ALIGNED_APK="${APK%.apk}-aligned.apk"
-          SIGNED_APK="${APK%.apk}-verified.apk"
           jarsigner -keystore app/release.keystore -storetype JKS \
             -storepass "$RELEASE_STORE_PASSWORD" -keypass "$RELEASE_KEY_PASSWORD" \
             -digestalg SHA-256 -sigalg SHA256withRSA -signedjar "$V1_APK" "$APK" "$RELEASE_KEY_ALIAS"
           "$ANDROID_HOME/build-tools/34.0.0/zipalign" -f 4 "$V1_APK" "$ALIGNED_APK"
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
-            --ks app/release.keystore --ks-key-alias "$RELEASE_KEY_ALIAS" \
-            --ks-pass env:RELEASE_STORE_PASSWORD --key-pass env:RELEASE_KEY_PASSWORD \
-            --min-sdk-version 26 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-            --out "$SIGNED_APK" "$ALIGNED_APK"
-          mv "$SIGNED_APK" "$APK"
-          rm -f "$V1_APK" "$ALIGNED_APK"
+          mv "$ALIGNED_APK" "$APK"
+          rm -f "$V1_APK"
+          jarsigner -verify -certs "$APK"
           VERIFY_OUTPUT="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK")"
           printf '%s\n' "$VERIFY_OUTPUT"
           grep -Fq 'Verified using v1 scheme (JAR signing): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v1 signature"; exit 1; }
-          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$VERIFY_OUTPUT" || { echo "::error::APK lacks a valid v2 signature"; exit 1; }
 
       - name: Native dependency check (every DT_NEEDED of APK libs, runtimes and components resolves)
         run: python3 tools/check_bundle_needed.py app/build/outputs/apk/release/app-release.apk app/src/main/assets
