@@ -15,6 +15,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -108,7 +111,7 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                 }
             }
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                ProfileChooser(selected, ui.profiles.profiles, profileMenu, { profileMenu = it }, vm, onTab)
+                ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
                 PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state, { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() })
                 if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
                 QuickActions(onTab, onOpen)
@@ -122,9 +125,9 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
 
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0F13))) {
         RemoteCover(heroUrl, Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xC9000000), Color(0x65000000), Color(0xB8000000)))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x26000000), Color(0x22000000), Color(0xB9000000)))))
-        Column(Modifier.fillMaxSize().padding(start = 22.dp, end = 20.dp, top = 12.dp, bottom = 12.dp)) {
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0x65000000), Color(0x26000000), Color(0x95000000)))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x16000000), Color(0x12000000), Color(0x75000000)))))
+        Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 14.dp, top = 6.dp, bottom = 6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     PixelIcon("grass", size = 25.dp)
@@ -139,21 +142,21 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                 IconSquare("settings", "Settings") { onTab(Tab.SETTINGS) }
             }
 
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Column(Modifier.weight(1.75f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1.65f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Bottom) {
-                        Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 40.sp,
+                        Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 37.sp,
                             style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, androidx.compose.ui.geometry.Offset(3f, 4f), 5f)))
                         Text("JAVA EDITION", color = Color.White, fontFamily = Monocraft, fontSize = 15.sp, lineHeight = 19.sp)
                         Text(banner?.let { if (exactBanner != null) "OFFICIAL ART · ${it.version}" else "LATEST OFFICIAL JAVA UPDATE · ${it.version}" } ?: "OFFICIAL MINECRAFT JAVA EDITION",
                             color = Color.White.copy(alpha = 0.76f), fontSize = 9.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 4.dp))
                     }
 
-                    ProfileChooser(selected, ui.profiles.profiles, profileMenu, { profileMenu = it }, vm, onTab)
+                    ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state,
-                            { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.weight(1f).height(62.dp))
+                            { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.weight(1f).height(56.dp))
                         IconSquare("list", "Choose installation") { profileMenu = true }
                     }
                     if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
@@ -161,7 +164,7 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                     BottomStatus(selected, canPlay, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb ?: vm.recommendedHeapMb())
                 }
 
-                Column(Modifier.weight(0.92f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(Color(0xE90B1016)).padding(12.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp)).background(Color(0xE90B1016)).padding(9.dp)) {
                     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Latest News", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         TextButton(onClick = { openMinecraftNews(context) }) { Text("View all  →", color = Color.White, fontSize = 11.sp) }
@@ -199,13 +202,13 @@ private fun AccountButton(name: String, offline: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun IconSquare(icon: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.size(44.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xD91A2026)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(48.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xD91A2026)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         PixelIcon(icon, size = 22.dp, tint = Color.White)
     }
 }
 
 @Composable
-private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, expanded: Boolean, setExpanded: (Boolean) -> Unit, vm: LauncherViewModel, onTab: (Tab) -> Unit) {
+private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, latestRelease: String?, expanded: Boolean, setExpanded: (Boolean) -> Unit, vm: LauncherViewModel, onTab: (Tab) -> Unit) {
     val version = selected?.versionId
     Box {
         Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xE9161B21))
@@ -214,8 +217,9 @@ private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, expanded
             PixelIcon("grass", size = 26.dp)
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
-                Text(selected?.name ?: "Create an installation", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (version != null) "Minecraft Java  ·  $version" else "Choose a Minecraft version",
+                Text(if (version != null && version == latestRelease) "Latest Release ($version)" else version?.let { "Minecraft $it" } ?: "Choose a Minecraft version",
+                    color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(selected?.let { "${it.name} · ${profileSubtitle(it)}" } ?: "Create an installation to get started",
                     color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text("INSTALLATIONS", color = Color.White.copy(alpha = 0.78f), fontSize = 9.sp, maxLines = 1)
@@ -235,10 +239,28 @@ private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, expanded
 
 @Composable
 private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: PlayState, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
-    val bg = if (state == PlayState.REPAIR_REQUIRED || state == PlayState.LAUNCH_FAILED) Color(0xFFB93D32) else launcherGreen
-    Row(modifier.clip(RoundedCornerShape(9.dp)).background(Brush.verticalGradient(listOf(bg, if (bg == launcherGreen) launcherGreenShade else Color(0xFF8F2A25))))
+    val danger = state == PlayState.REPAIR_REQUIRED
+    val bg = if (danger) Color(0xFFB93D32) else launcherGreen
+    val shape = RoundedCornerShape(9.dp)
+    Row(modifier.clip(shape).background(Brush.verticalGradient(listOf(bg, if (danger) Color(0xFF8F2A25) else launcherGreenShade)))
+        .drawBehind {
+            val cell = 14.dp.toPx()
+            var y = 0f
+            var row = 0
+            while (y < size.height) {
+                var x = 0f
+                var col = 0
+                while (x < size.width) {
+                    if ((row + col) % 3 == 0) drawRect(Color.White.copy(alpha = 0.07f), Offset(x, y), Size(cell * 0.92f, cell * 0.92f))
+                    x += cell
+                    col++
+                }
+                y += cell
+                row++
+            }
+        }
         .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        PixelIcon(if (canPlay) "play" else "download", size = 30.dp, tint = Color.White)
+        PixelIcon(if (canPlay) "play" else "download", size = 34.dp, tint = Color.White)
         Spacer(Modifier.width(8.dp))
         Text(text, color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -276,11 +298,11 @@ private fun QuickAction(icon: String, label: String, onClick: () -> Unit, modifi
 private fun BottomStatus(profile: Profile?, canPlay: Boolean, recommendedRam: Int, configuredRam: Int) {
     val gameDir = profile?.let { runCatching { it.gameDir(Services.dirs).toString() }.getOrNull() } ?: "Game directory not set"
     Row(Modifier.fillMaxWidth().heightIn(min = 45.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xE91A2026)).padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.weight(1.15f).clip(RoundedCornerShape(8.dp)).background(Color(0xE91A2026)).padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(if (canPlay) Color(0xFF00E881) else Color(0xFFFFC451)))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(if (canPlay) "Ready to play" else if (profile == null) "No installation selected" else "Ready to install", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (canPlay) "Ready to play" else if (profile == null) "No installation selected" else "Ready to install", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(profile?.let { "Minecraft ${it.versionId} · ${profileSubtitle(it)}" } ?: "Choose a version to get started", color = Color.White.copy(alpha = 0.67f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

@@ -168,8 +168,8 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
         } else {
             Row(Modifier.fillMaxSize()) {
                 NavRail(tab, overlay, activeJobs, onSelect = { t -> overlay = null; tab = t }, onOpen = { overlay = it })
-                ScreenArea(Modifier.weight(1f).fillMaxHeight()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.End + WindowInsetsSides.Vertical)))
+                // The launcher is immersive and intentionally draws edge-to-edge under the landscape camera cutout.
+                ScreenArea(Modifier.weight(1f).fillMaxHeight())
             }
         }
         PixelToast(ui.message) { vm.toast(null) }
@@ -194,9 +194,8 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, on
             Destination("Downloads", "download", tab = Tab.DOWNLOADS),
             Destination("Settings", "settings", tab = Tab.SETTINGS),
         )
-        Column(Modifier.fillMaxHeight().width(156.dp).background(Color(0xFF10151A))
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical))
-            .padding(horizontal = 10.dp, vertical = 10.dp)) {
+        Column(Modifier.fillMaxHeight().width(128.dp).background(Color(0xFF10151A))
+            .padding(horizontal = 8.dp, vertical = 8.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 PixelIcon("grass", size = 31.dp)
                 Spacer(Modifier.width(8.dp))
@@ -220,10 +219,10 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, on
                         if (destination.tab != null) onSelect(destination.tab)
                         else destination.section?.let { onOpen(Overlay.Content(it)) }
                     }
-                    .padding(horizontal = 10.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PixelIcon(destination.icon, size = 20.dp, tint = if (isSelected) Color(0xFF73D348) else Color(0xFFD0D4D8))
-                    Spacer(Modifier.width(11.dp))
-                    Text(destination.label, color = if (isSelected) Color.White else Color(0xFFE0E3E6), fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                    .padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PixelIcon(destination.icon, size = 18.dp, tint = if (isSelected) Color(0xFF73D348) else Color(0xFFD0D4D8))
+                    Spacer(Modifier.width(8.dp))
+                    Text(destination.label, color = if (isSelected) Color.White else Color(0xFFE0E3E6), fontSize = 10.sp, lineHeight = 11.sp, maxLines = 2, modifier = Modifier.weight(1f))
                     if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 10.sp)
                 }
             }
