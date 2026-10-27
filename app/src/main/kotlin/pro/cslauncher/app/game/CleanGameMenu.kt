@@ -30,6 +30,7 @@ import pro.cslauncher.app.ui.screens.AppButton
 import pro.cslauncher.app.ui.screens.SwitchRow
 import pro.cslauncher.app.ui.theme.*
 import pro.cslauncher.core.settings.CursorMode
+import pro.cslauncher.core.settings.withVirtualMouse
 
 @Composable
 internal fun CleanGameMenu(host: GameMenuHost, open: Boolean, stats: List<Pair<String, String>>, initialTab: GameMenuTab) {
