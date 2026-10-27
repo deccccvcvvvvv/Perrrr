@@ -14,7 +14,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 env:
@@ -97,13 +97,35 @@ jobs:
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libcsglfw.so"
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -q "lib/arm64-v8a/libc++_shared.so"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CSLauncherPro-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      # Publish a real GitHub Release after every successful main build (push or manual dispatch).
+      # Pull requests still run all checks but never publish a release. The repository is private,
+      # so the release and its assets are visible only to people with repository access.
+      - name: Publish APK as a GitHub Release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          CHECKSUM="${APK}.sha256"
+          (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > "$(basename "$CHECKSUM")")
+
+          TAG="cslauncher-build-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+          TITLE="CS Launcher Pro build ${GITHUB_RUN_NUMBER}"
+          NOTES_FILE="/tmp/cslauncher-release-notes.md"
+          cat > "$NOTES_FILE" <<EOF
+          Automated Android build from commit $GITHUB_SHA.
+
+          - Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          - APK: debug-signed build produced by GitHub Actions.
+          - SHA-256 checksum is attached as app-debug.apk.sha256.
+          EOF
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" "$CHECKSUM" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "$APK" "$CHECKSUM" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$NOTES_FILE"
+          fi
+          echo "Published $APK as release $TAG"
 
       - name: Upload reports on failure
         if: failure()

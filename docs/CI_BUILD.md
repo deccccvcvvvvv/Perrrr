@@ -25,9 +25,13 @@ fine; compiling/packaging the APK happens only inside the GitHub Actions workflo
    `libcsglfw.so` / `libcsbridge.so` from `app/src/main/cpp` via CMake, so launcher code is never
    stale even though the third-party payloads are reused.
 8. `tools/check_bundle_needed.py` verifies every ELF `DT_NEEDED`, and the APK contents are asserted.
-9. `actions/upload-artifact@v4` publishes **`CSLauncherPro-debug-apk`** (14-day retention).
+9. On a successful build from `main` (push or manual dispatch), the workflow creates a published
+   GitHub Release tagged `cslauncher-build-<run-number>-<short-sha>` and attaches `app-debug.apk`
+   plus its SHA-256 checksum. The APK is **not** uploaded as a workflow artifact. The repository is
+   private, so releases are visible only to people with repository access. Pull requests still run
+   build/checks but never publish a release.
 10. On failure, `build-reports` (compiler/test/lint output) is uploaded and a summary is written to
-    the run's job summary. No APK is reported when a step fails.
+    the run's job summary. No APK or release is published when a step fails.
 
 The `natives` / `natives34` jobs that cross-compile LWJGL, GL4ES, MobileGlues, OpenAL Soft,
 FreeType, shaderc and SPIRV-Cross from source are preserved but gated behind
@@ -36,9 +40,9 @@ source build is not required for every push and a failure there cannot block an 
 
 ## Triggering
 
-- Automatic on push to `main` and on pull requests.
-- Manual: **Actions → Android build → Run workflow**, optional `rebuild_natives`.
-- API: `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` with `{"ref":"main"}`.
+- Automatic build on push to `main` and on pull requests. A successful `main` push publishes a private GitHub Release; a pull request only builds/checks.
+- Manual: **Actions → Android build → Run workflow**, optional `rebuild_natives`. Dispatching from `main` publishes a release after a successful build; dispatching from another branch does not.
+- API: `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` with `{"ref":"main"}`. A successful main dispatch publishes the release.
 
 ## Updating the pinned payloads
 
@@ -57,4 +61,4 @@ GitHub currently refuses to start **any** hosted runner for this repository. Eve
 This is a billing/spending-limit problem on the GitHub account, **not** a workflow or source error.
 It cannot be fixed from the repository. Once the payment method / spending limit is corrected in
 *Settings → Billing & plans*, re-run the workflow (or push again) and the `build` job will execute.
-Until then no GitHub Actions APK artifact can exist, and none should be claimed.
+Until then no GitHub Actions build or release can complete, and none should be claimed.
