@@ -140,7 +140,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
         }) { s ->
             when (s) {
                 is Screen.T -> when (s.tab) {
-                    Tab.HOME -> HomeScreen(vm, onOpen = { overlay = it }, onTab = { tab = it })
+                    Tab.HOME -> MinecraftLauncherHome(vm, onOpen = { overlay = it }, onTab = { tab = it })
                     Tab.PROFILES -> ProfilesScreen(vm, onEdit = { overlay = Overlay.EditProfile(it) }, onOpen = { overlay = it })
                     Tab.BROWSE -> BrowseScreen(vm, onOpen = { overlay = it })
                     Tab.DOWNLOADS -> DownloadsScreen(vm)
@@ -157,7 +157,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
         }
     }
 
-    val compact = !p.pixel && androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
+    val compact = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 600
     CsBackground(animated = animatedBackground) {
         if (compact) {
             Column(Modifier.fillMaxSize()) {
@@ -176,35 +176,33 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
     }
 }
 
-/**
- * Launcher sidebar with the Home/Installations/content destinations. Pixel theme keeps its compact icon rail.
- */
+/** Dark launcher rail, shared by all themes in landscape. */
 @Composable
 internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
-    val p = LocalPalette.current
     val context = androidx.compose.ui.platform.LocalContext.current
-    if (!p.pixel) {
-        data class Destination(val label: String, val icon: String, val tab: Tab? = null, val section: ContentSection? = null)
-        val destinations = listOf(
-            Destination("Home", "home", tab = Tab.HOME),
-            Destination("Installations", "grass", tab = Tab.PROFILES),
-            Destination("Mods", "pickaxe", section = ContentSection.MODS),
-            Destination("Resource Packs", "painting", section = ContentSection.RESOURCE_PACKS),
-            Destination("Worlds", "world", section = ContentSection.WORLDS),
-            Destination("Downloads", "download", tab = Tab.DOWNLOADS),
-            Destination("Settings", "settings", tab = Tab.SETTINGS),
-        )
-        Column(Modifier.fillMaxHeight().width(128.dp).background(Color(0xFF10151A))
-            .padding(horizontal = 8.dp, vertical = 8.dp)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val section: ContentSection? = null, val skins: Boolean = false)
+    val destinations = listOf(
+        Destination("Home", "home", tab = Tab.HOME),
+        Destination("Installations", "grass", tab = Tab.PROFILES),
+        Destination("Skins", "head", skins = true),
+        Destination("Mods", "pickaxe", section = ContentSection.MODS),
+        Destination("Resource Packs", "painting", section = ContentSection.RESOURCE_PACKS),
+        Destination("Worlds", "world", section = ContentSection.WORLDS),
+        Destination("Downloads", "download", tab = Tab.DOWNLOADS),
+        Destination("Settings", "settings", tab = Tab.SETTINGS),
+    )
+    BoxWithConstraints(Modifier.fillMaxHeight().width(118.dp).background(Color(0xFF0B1115))) {
+        val itemHeight = ((maxHeight - 58.dp) / destinations.size).coerceIn(34.dp, 52.dp)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 PixelIcon("grass", size = 31.dp)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(7.dp))
                 Column {
-                    Text("CS LAUNCHER", color = p.text, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1)
-                    Text("PRO · JAVA EDITION", color = p.textMuted, fontSize = 8.sp, maxLines = 1)
+                    Text("CS", color = Color.White, fontFamily = Monocraft, fontSize = 10.sp, lineHeight = 10.sp)
+                    Text("LAUNCHER", color = Color.White, fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 10.sp)
+                    Text("PRO", color = Color(0xFFB9B4AA), fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 10.sp)
                 }
             }
-            Spacer(Modifier.height(12.dp))
             destinations.forEach { destination ->
                 val isSelected = when {
                     destination.tab != null && activeOverlay == null -> selected == destination.tab
@@ -212,74 +210,23 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, on
                     destination.section != null && activeOverlay is Overlay.Content -> destination.section == activeOverlay.section
                     else -> false
                 }
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                    .background(if (isSelected) Color(0xFF263C2B) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                Row(Modifier.fillMaxWidth().height(itemHeight)
+                    .background(if (isSelected) Color(0xFF143B24) else Color.Transparent)
+                    .drawBehind { if (isSelected) drawRect(Color(0xFF11E766), size = Size(4.dp.toPx(), size.height)) }
                     .clickable {
-                        pro.cslauncher.app.ui.theme.MinecraftUiClickSound.play(context)
-                        if (destination.tab != null) onSelect(destination.tab)
-                        else destination.section?.let { onOpen(Overlay.Content(it)) }
-                    }
-                    .padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PixelIcon(destination.icon, size = 18.dp, tint = if (isSelected) Color(0xFF73D348) else Color(0xFFD0D4D8))
-                    Spacer(Modifier.width(8.dp))
-                    Text(destination.label, color = if (isSelected) Color.White else Color(0xFFE0E3E6), fontSize = 10.sp, lineHeight = 11.sp, maxLines = 2, modifier = Modifier.weight(1f))
-                    if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 10.sp)
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Text("Official Minecraft Java news", color = Color(0xFF8C979F), fontSize = 8.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
-            Text("CS Launcher · Android", color = Color(0xFF8C979F), fontSize = 8.sp, modifier = Modifier.padding(start = 8.dp, bottom = 3.dp))
-        }
-        return
-    }
-    val haptic = LocalHapticFeedback.current
-    val reduce = LocalReduceMotion.current
-    BoxWithConstraints(
-        Modifier.fillMaxHeight().background(Color(0xE61B1B1C))
-            .drawBehind { drawRect(Color(0xFF111112), Offset(size.width - 2.dp.toPx(), 0f), Size(2.dp.toPx(), size.height)) }
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical))
-            .width(64.dp),
-    ) {
-        val logo = 34.dp
-        val itemH = ((maxHeight - logo - 12.dp) / Tab.entries.size).coerceIn(42.dp, 56.dp)
-        val fits = logo + 12.dp + itemH * Tab.entries.size <= maxHeight
-        Column(
-            Modifier.fillMaxSize().then(if (fits) Modifier else Modifier.verticalScroll(rememberScrollState())).padding(vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = if (fits) Arrangement.SpaceBetween else Arrangement.Top,
-        ) {
-            Box(Modifier.height(logo), contentAlignment = Alignment.Center) { PixelIcon("grass", size = 26.dp) }
-            Tab.entries.forEach { t ->
-                val sel = t == selected && activeOverlay == null
-                val lift by animateFloatAsState(if (sel) 1f else 0f, if (reduce) snap() else spring(dampingRatio = 0.55f, stiffness = 500f), label = "rail")
-                val busy = t == Tab.DOWNLOADS && activeJobs > 0
-                val bob = if (busy && !reduce) rememberInfiniteTransition(label = "dl").animateFloat(0f, 1f, infiniteRepeatable(tween(700, easing = LinearEasing)), label = "bob").value else 0f
-                Box(
-                    Modifier.size(58.dp, itemH)
-                        .semantics { contentDescription = t.label + if (busy) ", $activeJobs running" else "" }
-                        .clickable(remember { MutableInteractionSource() }, null, role = Role.Tab) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSelect(t) }
-                        .drawBehind {
-                            if (lift > 0.01f) {
-                                val b = 2.dp.toPx()
-                                val inset = (1f - lift) * size.width / 2
-                                drawRect(Color(0xFF1E1E1F).copy(alpha = lift), Offset(inset, 2.dp.toPx()), Size(size.width - 2 * inset, size.height - 4.dp.toPx()))
-                                drawRect(Color(0xFF3C8527).copy(alpha = lift), Offset(inset + b, 2.dp.toPx() + b), Size(size.width - 2 * inset - 2 * b, size.height - 4.dp.toPx() - 2 * b))
-                                drawRect(Color(0xFF52A535).copy(alpha = lift), Offset(inset + b, 2.dp.toPx() + b), Size(size.width - 2 * inset - 2 * b, b))
+                        MinecraftUiClickSound.play(context)
+                        when {
+                            destination.tab != null -> onSelect(destination.tab)
+                            destination.section != null -> onOpen(Overlay.Content(destination.section))
+                            destination.skins -> runCatching {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin")))
                             }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { translationY = -lift * 1.dp.toPx() }) {
-                        // The download arrow drops into its tray in steps while something is downloading.
-                        val step = (bob * 4).toInt().coerceAtMost(3)
-                        PixelIcon(t.icon, Modifier.graphicsLayer { translationY = if (busy) (step - 1) * 1.5f.dp.toPx() else 0f },
-                            size = if (itemH < 48.dp) 20.dp else 22.dp, tint = if (sel) Color.White else Color(0xFFBDBEC0))
-                        Spacer(Modifier.height(2.dp))
-                        Text(t.label, color = if (sel) Color.White else Color(0xFFA8A9AB), fontFamily = Monocraft, fontSize = 8.sp, lineHeight = 10.sp, maxLines = 1)
-                    }
-                    if (busy) Box(Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 2.dp).background(Color(0xFF1E1E1F)).padding(1.dp).background(Color(0xFFE0B020)).padding(horizontal = 3.dp)) {
-                        Text("$activeJobs", color = Color.Black, fontFamily = Monocraft, fontSize = 8.sp, lineHeight = 10.sp)
-                    }
+                        }
+                    }.padding(start = 14.dp, end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PixelIcon(destination.icon, size = 21.dp, tint = Color(0xFFE8EAED))
+                    Spacer(Modifier.width(9.dp))
+                    Text(destination.label, color = Color.White, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, modifier = Modifier.weight(1f))
+                    if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 9.sp)
                 }
             }
         }
