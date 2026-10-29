@@ -53,6 +53,7 @@ enum class Tab(val label: String, val icon: String) {
 sealed class Overlay {
     data object Accounts : Overlay()
     data object Logs : Overlay()
+    data object Skins : Overlay()
     data class News(val patchNotes: Boolean = false) : Overlay()
     data class EditProfile(val id: String) : Overlay()
     data class Content(val section: ContentSection) : Overlay()
@@ -149,6 +150,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
                 }
                 is Screen.O -> when (val o = s.overlay) {
                     Overlay.Accounts -> AccountsScreen(vm, onBack = { overlay = null })
+                    Overlay.Skins -> SkinsScreen(vm, onBack = { overlay = null }, onAccounts = { overlay = Overlay.Accounts })
                     Overlay.Logs -> LogsScreen(vm, onBack = { overlay = null })
                     is Overlay.News -> OfficialNewsScreen(o.patchNotes, onBack = { overlay = null })
                     is Overlay.EditProfile -> ProfileEditorScreen(vm, o.id, onBack = { overlay = null })
@@ -182,17 +184,22 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
 @Composable
 internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, accountName: String?, accountType: String?, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val overlay: Overlay? = null, val skins: Boolean = false)
+    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val overlay: Overlay? = null)
     val destinations = listOf(
         Destination("Play", "home", tab = Tab.HOME),
         Destination("Installations", "grass", tab = Tab.PROFILES),
-        Destination("Skins", "head", skins = true),
+        Destination("Skins", "head", overlay = Overlay.Skins),
         Destination("Patch Notes", "book", overlay = Overlay.News(true)),
         Destination("News", "image", overlay = Overlay.News(false)),
         Destination("Mods", "pickaxe", tab = Tab.BROWSE),
         Destination("Profile", "head", overlay = Overlay.Accounts),
         Destination("Downloads", "download", tab = Tab.DOWNLOADS),
         Destination("Settings", "settings", tab = Tab.SETTINGS),
+        Destination("Resource Packs", "painting", overlay = Overlay.Content(ContentSection.RESOURCE_PACKS)),
+        Destination("Shaders", "sun", overlay = Overlay.Content(ContentSection.SHADERS)),
+        Destination("Worlds", "world", overlay = Overlay.Content(ContentSection.WORLDS)),
+        Destination("Screenshots", "image", overlay = Overlay.Content(ContentSection.SCREENSHOTS)),
+        Destination("Recordings", "record", overlay = Overlay.Content(ContentSection.RECORDINGS)),
     )
     BoxWithConstraints(Modifier.fillMaxHeight().width(160.dp).background(Color(0xFF141517))) {
         Column(Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 6.dp)) {
@@ -221,7 +228,6 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, ac
                             when {
                                 destination.tab != null -> onSelect(destination.tab)
                                 destination.overlay != null -> onOpen(destination.overlay)
-                                destination.skins -> runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin"))) }
                             }
                         }.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         PixelIcon(destination.icon, size = 19.dp, tint = Color(0xFFE4E6E8))

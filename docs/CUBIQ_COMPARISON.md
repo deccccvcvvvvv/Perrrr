@@ -25,3 +25,7 @@ Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b
 4. Design a separately reviewed LAN/server feature, including session lifecycle, authentication, permission/privacy boundaries, platform compatibility and two-device tests.
 5. Verify renderer, control, gamepad and gyro compatibility on physical Android hardware; do not expose unsupported choices as available.
 6. Run GitHub Actions plus real-device smoke tests for login, install, play, downloads, profile changes, content management and failure recovery. A successful CI build is not a device test.
+
+## UI consistency and skin preview update
+
+A follow-up unifies the default pixel-theme surface and button palette across existing screens and adds an in-app, account-backed 2D skin preview. The Minecraft.net link is still used for changing Microsoft skins; local/offline skin installation and the upstream 3D wardrobe are not implemented. The sidebar also keeps installed content, worlds, screenshots and recordings reachable. The Mods browser now has a hub-style heading and a shortcut to installed mods. These are adaptations of existing CS screens, not a pixel-exact recreation of every Cubiq screen.

@@ -56,8 +56,8 @@ val MinecraftLauncherPalette = CsPalette(
 
 /** Blocky stone-and-grass palette inspired by Minecraft's mobile menus (original colour choices). */
 val PixelPalette = CsPalette(
-    glass = false, background = Color(0xFF1B1B1C), surfaceSecondary = Color(0xFF242425), elevated = Color(0xFF313233), card = Color(0xFF313233),
-    secondarySurface = Color(0xFF48494A), border = Color(0xFF1E1E1F), text = Color(0xFFFFFFFF), textSecondary = Color(0xFFCFD0D2),
+    glass = false, background = Color(0xFF141414), surfaceSecondary = Color(0xFF1A1A1C), elevated = Color(0xFF1E1E20), card = Color(0xFF1E1E20),
+    secondarySurface = Color(0xFF36363B), border = Color(0xFF303033), text = Color(0xFFFFFFFF), textSecondary = Color(0xFFCFD0D2),
     textMuted = Color(0xFF9A9B9E), accent = Color(0xFF6CC349), selected = Color(0xFF3C8527), highlight = Color(0xFF6D6E70),
     danger = Color(0xFFE05050), success = Color(0xFF6CC349), warning = Color(0xFFFFD94A), pixel = true,
 )
@@ -113,7 +113,7 @@ fun CsBackground(modifier: Modifier = Modifier, animated: Boolean = true, conten
     Box(modifier.fillMaxSize().background(p.background)) {
         if (p.pixel) {
             PixelScene(Modifier.fillMaxSize(), animate = animated && !LocalReduceMotion.current)
-            Box(Modifier.fillMaxSize().background(Color(0x66000000)))
+            Box(Modifier.fillMaxSize().background(Color(0xE6141414)))
         } else if (LocalGlassEnabled.current) {
             Canvas(Modifier.fillMaxSize().blur(80.dp)) {
                 drawCircle(Brush.radialGradient(listOf(Color(0x332F3A52), Color.Transparent), center = Offset(size.width * 0.15f, size.height * 0.12f), radius = size.width * 0.7f),

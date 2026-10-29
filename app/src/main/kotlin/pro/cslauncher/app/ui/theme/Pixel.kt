@@ -60,13 +60,13 @@ import kotlin.math.*
 /** Colours of the pixel UI kit. */
 object Px {
     val border = Color(0xFF1E1E1F)
-    val panel = Color(0xF2313233)
-    val panelLight = Color(0xFF4A4B4D)
-    val panelDark = Color(0xFF262627)
+    val panel = Color(0xF21E1E20)
+    val panelLight = Color(0xFF38383C)
+    val panelDark = Color(0xFF131315)
     val inset = Color(0xFF1B1B1C)
     val insetShade = Color(0xFF111112)
-    val face = Color(0xFF48494A); val faceHi = Color(0xFF6D6E70); val faceDepth = Color(0xFF2A2B2C)
-    val green = Color(0xFF3C8527); val greenHi = Color(0xFF52A535); val greenDepth = Color(0xFF1D4D13)
+    val face = Color(0xFF45454B); val faceHi = Color(0xFF686870); val faceDepth = Color(0xFF242428)
+    val green = Color(0xFF489E28); val greenHi = Color(0xFF7AE842); val greenDepth = Color(0xFF1E520F)
     val red = Color(0xFFB83232); val redHi = Color(0xFFDA4D4D); val redDepth = Color(0xFF5E1717)
     val selFace = Color(0xFF5F7E52); val selHi = Color(0xFF7FA16F); val selDepth = Color(0xFF2F4428)
     val disabled = Color(0xFF3A3B3C); val disabledText = Color(0xFF8A8B8D)

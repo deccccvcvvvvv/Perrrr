@@ -106,6 +106,13 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("CONTENT & MODS HUB", color = Color.White, fontFamily = Monocraft, fontSize = 15.sp, maxLines = 1)
+                Text(profile?.let { "Active installation: ${it.name}" } ?: "Select an installation for compatible content", color = p.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            PixelButton("Installed", { onOpen(Overlay.Content(ContentSection.MODS)) }, enabled = profile != null, icon = "folder", height = 32.dp, fontSize = 10.sp)
+        }
         // ---------------------------------------------- kind tabs + search (one row; icon-only tabs on narrow phones)
         BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
             val iconOnly = maxWidth < 640.dp

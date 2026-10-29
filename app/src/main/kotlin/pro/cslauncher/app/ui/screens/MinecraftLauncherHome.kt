@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -133,10 +135,12 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
 @Composable
 private fun LaunchBusyIndicator(label: String) {
     val reduce = LocalReduceMotion.current
-    val transition = rememberInfiniteTransition(label = "launch")
-    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "block-rotation")
+    val angle = if (reduce) 0f else {
+        val transition = rememberInfiniteTransition(label = "launch")
+        transition.animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "block-rotation").value
+    }
     Row(Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xD916181B)).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        PixelIcon("grass", Modifier.rotate(if (reduce) 0f else angle), size = 20.dp)
+        PixelIcon("grass", Modifier.rotate(angle), size = 20.dp)
         Spacer(Modifier.width(8.dp))
         Text(label, color = Color.White, fontFamily = Monocraft, fontSize = 10.sp)
     }
@@ -225,6 +229,8 @@ private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, latestRe
 @Composable
 private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: PlayState, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
     val interaction = remember { MutableInteractionSource() }
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val pressed by interaction.collectIsPressedAsState()
     val reduce = LocalReduceMotion.current
     val pressOffset by animateDpAsState(if (pressed && enabled) 2.dp else 0.dp, if (reduce) snap() else tween(90), label = "play-press")
@@ -237,7 +243,7 @@ private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: 
             drawRect(if (pressed) Color(0xFF1E520F) else Color(0xFF7AE842), Offset(2.dp.toPx(), 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
             drawRect(if (pressed) Color(0xFF7AE842) else Color(0xFF1E520F), Offset(2.dp.toPx(), size.height - bevel - 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
         }
-        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
         .padding(horizontal = 8.dp).offset(y = pressOffset), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         PixelIcon(if (canPlay) "play" else "download", size = 22.dp, tint = Color.White)
         Spacer(Modifier.width(7.dp))
