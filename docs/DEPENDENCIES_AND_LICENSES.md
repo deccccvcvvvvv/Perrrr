@@ -10,6 +10,8 @@
 | AndroidX Compose BOM (ui, foundation, material3, material-icons-core, animation, runtime) | 2024.09.02 | Apache-2.0 | UI |
 | AndroidX activity-compose | 1.9.2 | Apache-2.0 | activities, result APIs |
 | AndroidX core-ktx | 1.13.1 | Apache-2.0 | compat helpers, FileProvider |
+| AndroidX WebKit | 1.11.0 | Apache-2.0 | local-only skin preview asset loader |
+| skinview3d / three.js | Cubiq bundled skinview3d / three.js r156 | MIT | 3D skin preview; notices in `assets/licenses/` |
 | AndroidX lifecycle (viewmodel-compose, runtime-compose) | 2.8.6 | Apache-2.0 | ViewModel, lifecycle-aware flows |
 | Transitive AndroidX (collection, annotation, savedstate, emoji2, profileinstaller, startup, tracing, …), Guava `listenablefuture`, JetBrains annotations | (resolved by Gradle) | Apache-2.0 | pulled in by the above |
 | `libcsglfw.so`, `libcsbridge.so` | this project | project licence | GLFW 3.4 and SDL3 window/input APIs on Android (original implementations), in-process JVM bridge |
@@ -31,7 +33,7 @@
 | Monocraft font (`res/font/monocraft*.ttf`) | v4.2.1 (Regular, Bold), unmodified | SIL OFL-1.1 (licence text shipped in `assets/licenses/Monocraft-OFL-1.1.txt`) | pixel-style titles, buttons and labels |
 | LLVM libc++ (`libc++_shared.so`, arm64-v8a) | Android NDK r27d (27.3.13750724), unmodified | Apache-2.0 WITH LLVM-exception | C++ runtime required by the Java 25 runtime (built with NDK r27d); see `app/src/main/jniLibs/README.md` |
 
-The UI button implementation in `ui/theme/CubiqButton.kt` is adapted from Cubiq Launcher at commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (GPL-3.0; licence included in `assets/licenses/Cubiq-GPL-3.0.txt`; source: https://github.com/VivxKumar07/Cubiq-Launcher). The remainder of the CS launcher core remains separate from the Cubiq launcher core.
+The UI button implementation in `ui/theme/CubiqButton.kt` and local `assets/skinview/skinview.js` and `.html` are adapted from Cubiq Launcher at commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (GPL-3.0; licence included in `assets/licenses/Cubiq-GPL-3.0.txt`; source: https://github.com/VivxKumar07/Cubiq-Launcher). The remainder of the CS launcher core remains separate from the Cubiq launcher core.
 The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` and `tools/natives34/build.sh` (GL4ES is only switched from
 a static to a shared library in its `Android.mk`). Source URLs and pinned versions are in that script and in each component's
 `cs-component.json` (`license`, `source`). LGPL/GPL obligations: the corresponding source is the pinned upstream revision;

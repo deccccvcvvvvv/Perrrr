@@ -10,11 +10,11 @@ Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b
 | Installations | Search, cards, selection, launch and management | Searchable installation rows wired to existing profile creation, selection, install, launch and management. |
 | News | Separate news and patch-note screens | Real official Java patch-note feed with refresh and article links. Both destinations currently use that feed; they are not a full copy of Cubiq's separate sources. |
 | Animation | Press feedback and rotating/pulsing launch visual | Green button press and rotating busy indicator; honours reduced motion. Other Cubiq animations not yet matched. |
-| Accounts | Microsoft, offline, profile/wardrobe | Existing Microsoft, Ely.by and offline account flows preserved. Skin item opens the official Minecraft skin page; no in-app 3D wardrobe yet. |
+| Accounts | Microsoft, offline, profile/wardrobe | Existing Microsoft, Ely.by and offline account flows preserved. Cubiq skinview3d animation is integrated for PNG preview; Microsoft uploads require explicit confirmation. Offline skins remain preview-only and capes/wardrobe parity is incomplete. |
 | Loaders | Advertises Fabric, Forge, NeoForge, Quilt | CS core supports Vanilla/Fabric/Quilt and OptiFine; Forge/NeoForge installation requires installer processor support and is not advertised as working. |
 | Mod and content hub | Modrinth/CurseForge mods, modpacks, resource packs, shaders | Existing browser and per-profile content management retained; parity of filters/workflows still needs a feature-by-feature comparison. |
 | Renderers and Java | Cubiq-specific renderer stacks and runtimes | Existing CS Java/native stack retained; no claim that Cubiq-only renderers or drivers have been integrated. |
-| Multiplayer | Terracotta LAN proxy and server browser | A read-only saved-server viewer and on-demand status ping use the existing CS core. Cubiq/Terracotta LAN proxy and direct joining are not integrated. LAN proxy requires networking, security, lifecycle and device testing. |
+| Multiplayer | Terracotta LAN proxy and server browser | Saved-server add/edit/delete with NBT preservation, backups and on-demand ping are implemented in an app-side adapter using the existing CS core. Cubiq/Terracotta LAN proxy and direct joining are not integrated. LAN proxy requires networking, security, lifecycle and device testing. |
 | Controls | touch layouts, editor, gamepad, gyro | Existing control editor, multi-touch and controller support retained; gyro and exact Bedrock control parity not verified. |
 
 ## Next engineering steps
@@ -33,3 +33,9 @@ A follow-up unifies the default pixel-theme surface and button palette across ex
 ## Direct Cubiq component adaptation
 
 The original Cubiq Minecraft button style, bevel and press handling are adapted into `CubiqButton.kt` and used by the default pixel theme and the home Play button. The CS click sound, haptics, font and loading indicator replace Cubiq-specific dependencies. The launcher name and logo remain CS Launcher. The GPL-3.0 text is included under `app/src/main/assets/licenses/` and the upstream commit is recorded in the source header. Other upstream UI screens, animations and features have not yet all been ported.
+
+## Skin and server integration update
+
+Cubiq's skinview HTML and animation JavaScript at the pinned revision, together with skinview3d/three.js, are bundled for a local WebView 3D preview; the app keeps CS branding. The viewer accepts validated 64×64 or 64×32 PNG files and uses an offline-only WebView with no JavaScript bridge. A Microsoft skin upload is available only after confirmation. The official API upload and WebView interaction require device/account testing. Offline skin injection and cape wardrobe are not implemented.
+
+The multiplayer screen can add, edit, delete and ping the selected profile's server entries. The app-side adapter keeps unknown NBT entries, creates a backup and rejects stale files; editing is disabled during launch/gameplay. Joining still happens inside Minecraft. LAN proxy is not implemented.

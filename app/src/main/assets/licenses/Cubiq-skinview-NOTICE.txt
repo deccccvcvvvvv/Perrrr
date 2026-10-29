@@ -1,0 +1,6 @@
+The skinview.html and skinview.js assets are adapted from Cubiq Launcher:
+https://github.com/VivxKumar07/Cubiq-Launcher
+Revision: 289cc076012f5b2a7a58b88ccd355f7e912e1d5e
+Cubiq is distributed under GPL-3.0; see Cubiq-GPL-3.0.txt. The HTML has an added Content-Security-Policy.
+The bundled skinview3d JavaScript contains skinview3d and three.js; see skinview3d-MIT.txt and threejs-MIT.txt.
+No Cubiq branding or logo is included.
