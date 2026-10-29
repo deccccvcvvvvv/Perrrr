@@ -1,6 +1,6 @@
 # Cubiq reference analysis and parity roadmap
 
-Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (inspected 2026-10-29). Cubiq is GPL-3.0; its upstream sources and assets have their own licence/ownership considerations. The reference checkout is not a drop-in replacement for this project: it is a multi-module Zalith-based application with different runtime, account, version, task and UI managers. Directly substituting it would replace the CS Launcher core. This phase implements a separate Compose shell using CS Launcher data and original generated artwork; it does not incorporate Cubiq source or image files into the app.
+Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (inspected 2026-10-29). Cubiq is GPL-3.0; its upstream sources and assets have their own licence/ownership considerations. The reference checkout is not a drop-in replacement for this project: it is a multi-module Zalith-based application with different runtime, account, version, task and UI managers. Directly substituting it would replace the CS Launcher core. The shell uses CS Launcher data and original generated artwork. As of the subsequent adaptation, `ui/theme/CubiqButton.kt` includes the upstream Cubiq button implementation adapted for CS font, sound, haptics and spinner; its GPL-3.0 notice is shipped with the application. Cubiq image files have not been imported.
 
 ## Reference experience vs this phase
 
@@ -14,7 +14,7 @@ Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b
 | Loaders | Advertises Fabric, Forge, NeoForge, Quilt | CS core supports Vanilla/Fabric/Quilt and OptiFine; Forge/NeoForge installation requires installer processor support and is not advertised as working. |
 | Mod and content hub | Modrinth/CurseForge mods, modpacks, resource packs, shaders | Existing browser and per-profile content management retained; parity of filters/workflows still needs a feature-by-feature comparison. |
 | Renderers and Java | Cubiq-specific renderer stacks and runtimes | Existing CS Java/native stack retained; no claim that Cubiq-only renderers or drivers have been integrated. |
-| Multiplayer | Terracotta LAN proxy and server browser | Not yet integrated. Requires networking, security, lifecycle and device testing; ordinary Minecraft networking is not a substitute for the proxy. |
+| Multiplayer | Terracotta LAN proxy and server browser | A read-only saved-server viewer and on-demand status ping use the existing CS core. Cubiq/Terracotta LAN proxy and direct joining are not integrated. LAN proxy requires networking, security, lifecycle and device testing. |
 | Controls | touch layouts, editor, gamepad, gyro | Existing control editor, multi-touch and controller support retained; gyro and exact Bedrock control parity not verified. |
 
 ## Next engineering steps
@@ -29,3 +29,7 @@ Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b
 ## UI consistency and skin preview update
 
 A follow-up unifies the default pixel-theme surface and button palette across existing screens and adds an in-app, account-backed 2D skin preview. The Minecraft.net link is still used for changing Microsoft skins; local/offline skin installation and the upstream 3D wardrobe are not implemented. The sidebar also keeps installed content, worlds, screenshots and recordings reachable. The Mods browser now has a hub-style heading and a shortcut to installed mods. These are adaptations of existing CS screens, not a pixel-exact recreation of every Cubiq screen.
+
+## Direct Cubiq component adaptation
+
+The original Cubiq Minecraft button style, bevel and press handling are adapted into `CubiqButton.kt` and used by the default pixel theme and the home Play button. The CS click sound, haptics, font and loading indicator replace Cubiq-specific dependencies. The launcher name and logo remain CS Launcher. The GPL-3.0 text is included under `app/src/main/assets/licenses/` and the upstream commit is recorded in the source header. Other upstream UI screens, animations and features have not yet all been ported.

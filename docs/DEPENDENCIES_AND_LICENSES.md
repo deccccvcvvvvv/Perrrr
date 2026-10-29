@@ -31,7 +31,7 @@
 | Monocraft font (`res/font/monocraft*.ttf`) | v4.2.1 (Regular, Bold), unmodified | SIL OFL-1.1 (licence text shipped in `assets/licenses/Monocraft-OFL-1.1.txt`) | pixel-style titles, buttons and labels |
 | LLVM libc++ (`libc++_shared.so`, arm64-v8a) | Android NDK r27d (27.3.13750724), unmodified | Apache-2.0 WITH LLVM-exception | C++ runtime required by the Java 25 runtime (built with NDK r27d); see `app/src/main/jniLibs/README.md` |
 
-All Kotlin and C sources of the launcher itself were written for this project; no launcher code was copied from other launchers.
+The UI button implementation in `ui/theme/CubiqButton.kt` is adapted from Cubiq Launcher at commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (GPL-3.0; licence included in `assets/licenses/Cubiq-GPL-3.0.txt`; source: https://github.com/VivxKumar07/Cubiq-Launcher). The remainder of the CS launcher core remains separate from the Cubiq launcher core.
 The third-party natives are unmodified upstream sources built by `tools/natives/build_natives.sh` and `tools/natives34/build.sh` (GL4ES is only switched from
 a static to a shared library in its `Android.mk`). Source URLs and pinned versions are in that script and in each component's
 `cs-component.json` (`license`, `source`). LGPL/GPL obligations: the corresponding source is the pinned upstream revision;

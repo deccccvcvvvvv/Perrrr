@@ -54,6 +54,7 @@ sealed class Overlay {
     data object Accounts : Overlay()
     data object Logs : Overlay()
     data object Skins : Overlay()
+    data object Servers : Overlay()
     data class News(val patchNotes: Boolean = false) : Overlay()
     data class EditProfile(val id: String) : Overlay()
     data class Content(val section: ContentSection) : Overlay()
@@ -151,6 +152,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
                 is Screen.O -> when (val o = s.overlay) {
                     Overlay.Accounts -> AccountsScreen(vm, onBack = { overlay = null })
                     Overlay.Skins -> SkinsScreen(vm, onBack = { overlay = null }, onAccounts = { overlay = Overlay.Accounts })
+                    Overlay.Servers -> ServersScreen(vm, onBack = { overlay = null }, onProfiles = { overlay = null; tab = Tab.PROFILES })
                     Overlay.Logs -> LogsScreen(vm, onBack = { overlay = null })
                     is Overlay.News -> OfficialNewsScreen(o.patchNotes, onBack = { overlay = null })
                     is Overlay.EditProfile -> ProfileEditorScreen(vm, o.id, onBack = { overlay = null })
@@ -193,6 +195,7 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, ac
         Destination("News", "image", overlay = Overlay.News(false)),
         Destination("Mods", "pickaxe", tab = Tab.BROWSE),
         Destination("Profile", "head", overlay = Overlay.Accounts),
+        Destination("Multiplayer", "world", overlay = Overlay.Servers),
         Destination("Downloads", "download", tab = Tab.DOWNLOADS),
         Destination("Settings", "settings", tab = Tab.SETTINGS),
         Destination("Resource Packs", "painting", overlay = Overlay.Content(ContentSection.RESOURCE_PACKS)),

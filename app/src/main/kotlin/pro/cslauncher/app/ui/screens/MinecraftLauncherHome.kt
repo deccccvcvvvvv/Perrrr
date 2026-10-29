@@ -12,6 +12,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -102,6 +105,7 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
         Image(painterResource(R.drawable.cubiq_style_hero), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x33000000), 0.5f to Color.Transparent, 0.8f to Color(0x99000000), 1f to Color(0xF20B0C0E))))
         Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PixelButton("MULTIPLAYER", { onOpen(Overlay.Servers) }, icon = "world", height = 38.dp, fontSize = 10.sp)
             IconSquare("download", "Downloads") { onTab(Tab.DOWNLOADS) }
             IconSquare("settings", "Settings") { onTab(Tab.SETTINGS) }
         }
@@ -154,6 +158,8 @@ fun OfficialNewsScreen(patchNotes: Boolean, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<OfficialPatchNote?>(null) }
+    var showReleases by remember { mutableStateOf(true) }
+    var showSnapshots by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val load: (Boolean) -> Unit = { force -> scope.launch {
         loading = true
@@ -163,13 +169,29 @@ fun OfficialNewsScreen(patchNotes: Boolean, onBack: () -> Unit) {
         loading = false
     } }
     LaunchedEffect(Unit) { load(false) }
+    val notes = if (!patchNotes) feed else feed.filter { note ->
+        val release = note.type.equals("release", ignoreCase = true)
+        (release && showReleases) || (!release && showSnapshots)
+    }
     Column(Modifier.fillMaxSize().background(Color(0xFF141416)).padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (patchNotes) "PATCH NOTES" else "LATEST NEWS", color = Color.White, fontFamily = Monocraft, fontSize = 18.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = onBack) { Text("BACK", color = launcherGreen) }
+            PixelButton("Back", onBack, height = 32.dp, fontSize = 10.sp)
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            NewsSection(feed, loading, error, { load(true) }, { selected = it })
+        if (patchNotes) Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("VERSIONS:", color = Color(0xFFAAAAAA), fontFamily = Monocraft, fontSize = 10.sp)
+            PixelToggle(showReleases, { showReleases = it }); Text("Releases", color = Color.White, fontSize = 10.sp)
+            Spacer(Modifier.width(6.dp))
+            PixelToggle(showSnapshots, { showSnapshots = it }); Text("Snapshots", color = Color.White, fontSize = 10.sp)
+        }
+        when {
+            loading && feed.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = launcherGreen) }
+            feed.isEmpty() -> NewsEmpty(error, { load(true) })
+            notes.isEmpty() -> Text("No notes match these filters.", color = Color(0xFFAAAAAA), modifier = Modifier.padding(top = 16.dp), fontSize = 11.sp)
+            else -> LazyVerticalGrid(GridCells.Adaptive(260.dp), Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
+                items(notes) { note -> NewsCard(note, { selected = note }) }
+            }
         }
     }
     selected?.let { note -> NoteDialog(note, { selected = null }, { openOfficialArticle(context, note) }) }
@@ -228,27 +250,9 @@ private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, latestRe
 
 @Composable
 private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: PlayState, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
-    val interaction = remember { MutableInteractionSource() }
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    val pressed by interaction.collectIsPressedAsState()
-    val reduce = LocalReduceMotion.current
-    val pressOffset by animateDpAsState(if (pressed && enabled) 2.dp else 0.dp, if (reduce) snap() else tween(90), label = "play-press")
-    val top = when { !enabled -> Color(0xFF3A5D36); state == PlayState.REPAIR_REQUIRED -> Color(0xFFB93D32); pressed -> Color(0xFF286F1C); else -> Color(0xFF58B62F) }
-    val bottom = when { !enabled -> Color(0xFF263B25); state == PlayState.REPAIR_REQUIRED -> Color(0xFF8F2A25); pressed -> Color(0xFF1E5815); else -> Color(0xFF3E8E22) }
-    Row(modifier.clip(RoundedCornerShape(3.dp)).background(Brush.verticalGradient(listOf(top, bottom)))
-        .border(2.dp, Color(0xFF1B3D14), RoundedCornerShape(3.dp))
-        .drawBehind {
-            val bevel = 3.dp.toPx()
-            drawRect(if (pressed) Color(0xFF1E520F) else Color(0xFF7AE842), Offset(2.dp.toPx(), 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
-            drawRect(if (pressed) Color(0xFF7AE842) else Color(0xFF1E520F), Offset(2.dp.toPx(), size.height - bevel - 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
-        }
-        .clickable(interactionSource = interaction, indication = null, enabled = enabled) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
-        .padding(horizontal = 8.dp).offset(y = pressOffset), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        PixelIcon(if (canPlay) "play" else "download", size = 22.dp, tint = Color.White)
-        Spacer(Modifier.width(7.dp))
-        Text(text, color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    CubiqMinecraftButton(onClick = onClick, modifier = modifier, enabled = enabled,
+        style = if (state == PlayState.REPAIR_REQUIRED) MinecraftButtonStyle.RED else MinecraftButtonStyle.GREEN,
+        text = text, fontSize = 18.sp)
 }
 
 @Composable

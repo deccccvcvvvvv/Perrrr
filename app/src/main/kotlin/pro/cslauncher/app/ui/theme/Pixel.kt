@@ -144,45 +144,23 @@ fun PixelButton(
         }
         return
     }
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val reduce = LocalReduceMotion.current
-    val press by animateFloatAsState(if (pressed && enabled) 1f else 0f, tween(if (reduce) 0 else 60), label = "press")
-    val haptic = LocalHapticFeedback.current
-    val (face, hi, depth) = when {
-        !enabled -> Triple(Px.disabled, Color(0xFF4A4B4C), Color(0xFF242425))
-        style == PxStyle.PRIMARY -> Triple(Px.green, Px.greenHi, Px.greenDepth)
-        style == PxStyle.DANGER -> Triple(Px.red, Px.redHi, Px.redDepth)
-        style == PxStyle.SELECTED -> Triple(Px.selFace, Px.selHi, Px.selDepth)
-        else -> Triple(Px.face, Px.faceHi, Px.faceDepth)
+    val cubiqStyle = when (style) {
+        PxStyle.PRIMARY -> MinecraftButtonStyle.GREEN
+        PxStyle.DANGER -> MinecraftButtonStyle.RED
+        PxStyle.SELECTED -> MinecraftButtonStyle.DARK
+        PxStyle.NORMAL -> MinecraftButtonStyle.STONE
     }
-    val textColor = if (enabled) Color.White else Px.disabledText
-    val depthDp = 4.dp
-    Box(
-        modifier
-            .heightIn(min = height)
-            .semantics { if (contentDescription != null) this.contentDescription = contentDescription }
-            .clickable(interaction, null, enabled = enabled, role = Role.Button) { MinecraftUiClickSound.play(context); haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
-            .drawBehind {
-                val d = depthDp.toPx(); val b = 2.dp.toPx(); val top = d * press
-                val w = size.width; val h = size.height
-                drawRect(Px.border, Offset(0f, top), Size(w, h - top))
-                drawRect(depth, Offset(b, top + b), Size(w - 2 * b, h - top - 2 * b))
-                val faceH = h - top - 2 * b - d * (1 - press)
-                drawRect(face, Offset(b, top + b), Size(w - 2 * b, faceH))
-                drawRect(hi, Offset(b, top + b), Size(w - 2 * b, b))
-                drawRect(hi.copy(alpha = 0.55f), Offset(b, top + b), Size(b, faceH))
+    CubiqMinecraftButton(onClick = onClick,
+        modifier = modifier.heightIn(min = height).semantics { if (contentDescription != null) this.contentDescription = contentDescription },
+        style = cubiqStyle, enabled = enabled, content = {
+            Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                val textColor = if (enabled) Color.White else Px.disabledText
+                if (icon != null) PixelIcon(icon, size = when { height >= 56.dp -> 24.dp; height < 34.dp -> 14.dp; else -> 18.dp }, tint = textColor)
+                if (icon != null && !text.isNullOrEmpty()) Spacer(Modifier.width(if (height < 34.dp) 5.dp else 7.dp))
+                if (!text.isNullOrEmpty()) Text(text, color = textColor, fontFamily = Monocraft, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(shadow = if (enabled) PixelTextShadow else null), textAlign = TextAlign.Center)
             }
-            .padding(start = if (text.isNullOrEmpty()) 6.dp else 10.dp, end = if (text.isNullOrEmpty()) 6.dp else 10.dp, top = 2.dp + depthDp * press, bottom = 2.dp + depthDp * (1 - press)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            if (icon != null) PixelIcon(icon, size = when { height >= 56.dp -> 24.dp; height < 34.dp -> 14.dp; else -> 18.dp }, tint = textColor)
-            if (icon != null && !text.isNullOrEmpty()) Spacer(Modifier.width(if (height < 34.dp) 5.dp else 7.dp))
-            if (!text.isNullOrEmpty()) Text(text, color = textColor, fontFamily = Monocraft, fontSize = fontSize, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                style = TextStyle(shadow = if (enabled) PixelTextShadow else null), textAlign = TextAlign.Center)
-        }
-    }
+        })
 }
 
 /** Square icon button sharing the bevel look. */
