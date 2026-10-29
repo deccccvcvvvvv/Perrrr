@@ -1,0 +1,27 @@
+# Cubiq reference analysis and parity roadmap
+
+Reference: https://github.com/VivxKumar07/Cubiq-Launcher, commit `289cc076012f5b2a7a58b88ccd355f7e912e1d5e` (inspected 2026-10-29). Cubiq is GPL-3.0; its upstream sources and assets have their own licence/ownership considerations. The reference checkout is not a drop-in replacement for this project: it is a multi-module Zalith-based application with different runtime, account, version, task and UI managers. Directly substituting it would replace the CS Launcher core. This phase implements a separate Compose shell using CS Launcher data and original generated artwork; it does not incorporate Cubiq source or image files into the app.
+
+## Reference experience vs this phase
+
+| Area | Cubiq reference | CS Launcher status |
+|---|---|---|
+| Landscape Play | Account sidebar, Play/Installations/Skins/Patch Notes/News/Mods/Profile navigation, artwork, centered logo, version picker and green play dock | Reference-inspired shell, dynamic account, profile picker and real core actions; generated artwork and text logo, not pixel-identical. Downloads and Settings remain accessible. |
+| Installations | Search, cards, selection, launch and management | Searchable installation rows wired to existing profile creation, selection, install, launch and management. |
+| News | Separate news and patch-note screens | Real official Java patch-note feed with refresh and article links. Both destinations currently use that feed; they are not a full copy of Cubiq's separate sources. |
+| Animation | Press feedback and rotating/pulsing launch visual | Green button press and rotating busy indicator; honours reduced motion. Other Cubiq animations not yet matched. |
+| Accounts | Microsoft, offline, profile/wardrobe | Existing Microsoft, Ely.by and offline account flows preserved. Skin item opens the official Minecraft skin page; no in-app 3D wardrobe yet. |
+| Loaders | Advertises Fabric, Forge, NeoForge, Quilt | CS core supports Vanilla/Fabric/Quilt and OptiFine; Forge/NeoForge installation requires installer processor support and is not advertised as working. |
+| Mod and content hub | Modrinth/CurseForge mods, modpacks, resource packs, shaders | Existing browser and per-profile content management retained; parity of filters/workflows still needs a feature-by-feature comparison. |
+| Renderers and Java | Cubiq-specific renderer stacks and runtimes | Existing CS Java/native stack retained; no claim that Cubiq-only renderers or drivers have been integrated. |
+| Multiplayer | Terracotta LAN proxy and server browser | Not yet integrated. Requires networking, security, lifecycle and device testing; ordinary Minecraft networking is not a substitute for the proxy. |
+| Controls | touch layouts, editor, gamepad, gyro | Existing control editor, multi-touch and controller support retained; gyro and exact Bedrock control parity not verified. |
+
+## Next engineering steps
+
+1. Audit every screen and interaction against the upstream reference on real devices; reconcile spacing, responsiveness, assets, press/haptic/audio and reduced-motion behavior.
+2. Specify and implement real skin preview/upload with account-type restrictions and safe file handling; test 2D/3D previews and offline behaviour independently.
+3. Implement Forge and NeoForge installer processors in the CS core, with isolated paths, validation, cancellation and reproducible tests across versions.
+4. Design a separately reviewed LAN/server feature, including session lifecycle, authentication, permission/privacy boundaries, platform compatibility and two-device tests.
+5. Verify renderer, control, gamepad and gyro compatibility on physical Android hardware; do not expose unsupported choices as available.
+6. Run GitHub Actions plus real-device smoke tests for login, install, play, downloads, profile changes, content management and failure recovery. A successful CI build is not a device test.

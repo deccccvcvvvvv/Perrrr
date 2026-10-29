@@ -53,6 +53,7 @@ enum class Tab(val label: String, val icon: String) {
 sealed class Overlay {
     data object Accounts : Overlay()
     data object Logs : Overlay()
+    data class News(val patchNotes: Boolean = false) : Overlay()
     data class EditProfile(val id: String) : Overlay()
     data class Content(val section: ContentSection) : Overlay()
     data class OptiFine(val profileId: String?, val versionHint: String? = null) : Overlay()
@@ -149,6 +150,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
                 is Screen.O -> when (val o = s.overlay) {
                     Overlay.Accounts -> AccountsScreen(vm, onBack = { overlay = null })
                     Overlay.Logs -> LogsScreen(vm, onBack = { overlay = null })
+                    is Overlay.News -> OfficialNewsScreen(o.patchNotes, onBack = { overlay = null })
                     is Overlay.EditProfile -> ProfileEditorScreen(vm, o.id, onBack = { overlay = null })
                     is Overlay.Content -> ContentScreen(vm, o.section, onBack = { overlay = null })
                     is Overlay.OptiFine -> OptiFineScreen(vm, o.profileId, o.versionHint, onBack = { overlay = null })
@@ -167,7 +169,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                NavRail(tab, overlay, activeJobs, onSelect = { t -> overlay = null; tab = t }, onOpen = { overlay = it })
+                NavRail(tab, overlay, activeJobs, ui.activeAccount?.username, ui.activeAccount?.type?.name, onSelect = { t -> overlay = null; tab = t }, onOpen = { overlay = it })
                 // The launcher is immersive and intentionally draws edge-to-edge under the landscape camera cutout.
                 ScreenArea(Modifier.weight(1f).fillMaxHeight())
             }
@@ -176,57 +178,57 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
     }
 }
 
-/** Dark launcher rail, shared by all themes in landscape. */
+/** Landscape navigation inspired by the reference launcher, wired to this launcher's screens. */
 @Composable
-internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
+internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, accountName: String?, accountType: String?, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val section: ContentSection? = null, val skins: Boolean = false)
+    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val overlay: Overlay? = null, val skins: Boolean = false)
     val destinations = listOf(
-        Destination("Home", "home", tab = Tab.HOME),
+        Destination("Play", "home", tab = Tab.HOME),
         Destination("Installations", "grass", tab = Tab.PROFILES),
         Destination("Skins", "head", skins = true),
-        Destination("Mods", "pickaxe", section = ContentSection.MODS),
-        Destination("Resource Packs", "painting", section = ContentSection.RESOURCE_PACKS),
-        Destination("Worlds", "world", section = ContentSection.WORLDS),
+        Destination("Patch Notes", "book", overlay = Overlay.News(true)),
+        Destination("News", "image", overlay = Overlay.News(false)),
+        Destination("Mods", "pickaxe", tab = Tab.BROWSE),
+        Destination("Profile", "head", overlay = Overlay.Accounts),
         Destination("Downloads", "download", tab = Tab.DOWNLOADS),
         Destination("Settings", "settings", tab = Tab.SETTINGS),
     )
-    BoxWithConstraints(Modifier.fillMaxHeight().width(118.dp).background(Color(0xFF0B1115))) {
-        val itemHeight = ((maxHeight - 58.dp) / destinations.size).coerceIn(34.dp, 52.dp)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                PixelIcon("grass", size = 31.dp)
-                Spacer(Modifier.width(7.dp))
-                Column {
-                    Text("CS", color = Color.White, fontFamily = Monocraft, fontSize = 10.sp, lineHeight = 10.sp)
-                    Text("LAUNCHER", color = Color.White, fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 10.sp)
-                    Text("PRO", color = Color(0xFFB9B4AA), fontFamily = Monocraft, fontSize = 9.sp, lineHeight = 10.sp)
+    BoxWithConstraints(Modifier.fillMaxHeight().width(160.dp).background(Color(0xFF141517))) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().clickable { onOpen(Overlay.Accounts) }.padding(horizontal = 7.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                PixelIcon("head", size = 30.dp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(accountName ?: "Add account", color = Color.White, fontFamily = Monocraft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(accountType?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Not signed in", color = Color(0xFFAAAAAA), fontSize = 9.sp, maxLines = 1)
                 }
             }
-            destinations.forEach { destination ->
-                val isSelected = when {
-                    destination.tab != null && activeOverlay == null -> selected == destination.tab
-                    destination.tab == Tab.PROFILES && activeOverlay is Overlay.EditProfile -> true
-                    destination.section != null && activeOverlay is Overlay.Content -> destination.section == activeOverlay.section
-                    else -> false
-                }
-                Row(Modifier.fillMaxWidth().height(itemHeight)
-                    .background(if (isSelected) Color(0xFF143B24) else Color.Transparent)
-                    .drawBehind { if (isSelected) drawRect(Color(0xFF11E766), size = Size(4.dp.toPx(), size.height)) }
-                    .clickable {
-                        MinecraftUiClickSound.play(context)
-                        when {
-                            destination.tab != null -> onSelect(destination.tab)
-                            destination.section != null -> onOpen(Overlay.Content(destination.section))
-                            destination.skins -> runCatching {
-                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin")))
+            Spacer(Modifier.height(5.dp))
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                destinations.forEach { destination ->
+                    val isSelected = when {
+                        destination.tab != null && activeOverlay == null -> selected == destination.tab
+                        destination.tab == Tab.PROFILES && activeOverlay is Overlay.EditProfile -> true
+                        destination.overlay != null -> destination.overlay == activeOverlay
+                        else -> false
+                    }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 32.dp)
+                        .background(if (isSelected) Color(0xFF28352B) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .drawBehind { if (isSelected) drawRect(Color(0xFF4BC82A), size = Size(3.dp.toPx(), size.height)) }
+                        .clickable {
+                            MinecraftUiClickSound.play(context)
+                            when {
+                                destination.tab != null -> onSelect(destination.tab)
+                                destination.overlay != null -> onOpen(destination.overlay)
+                                destination.skins -> runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin"))) }
                             }
-                        }
-                    }.padding(start = 14.dp, end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PixelIcon(destination.icon, size = 21.dp, tint = Color(0xFFE8EAED))
-                    Spacer(Modifier.width(9.dp))
-                    Text(destination.label, color = Color.White, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, modifier = Modifier.weight(1f))
-                    if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 9.sp)
+                        }.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PixelIcon(destination.icon, size = 19.dp, tint = Color(0xFFE4E6E8))
+                        Spacer(Modifier.width(9.dp))
+                        Text(destination.label, color = if (isSelected) Color.White else Color(0xFFCACDD0), fontFamily = Monocraft, fontSize = 10.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 9.sp)
+                    }
                 }
             }
         }

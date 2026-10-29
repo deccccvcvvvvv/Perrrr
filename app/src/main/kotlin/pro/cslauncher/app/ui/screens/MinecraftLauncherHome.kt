@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -52,64 +56,35 @@ import java.util.Locale
 private val launcherGreen = Color(0xFF38C916)
 private val launcherGreenShade = Color(0xFF25960D)
 
-/** Launcher-style home with Mojang's live Java patch-note feed and official version artwork. */
+/** Reference-inspired launcher shell. Profiles, installs and launch remain backed by our own core. */
 @Composable
 fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) -> Unit) {
-    val context = LocalContext.current
-    val config = LocalConfiguration.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val jobs by vm.jobs.collectAsStateWithLifecycle()
-    val settings by vm.settings.collectAsStateWithLifecycle()
     val selected = ui.selected
     val state = vm.playState(ui, jobs)
     val currentJob = selected?.let { (jobs["task:profile-${it.id}"] ?: jobs[it.effectiveVersionId])?.takeIf { job -> job.active } }
     val isBusy = state in setOf(PlayState.DOWNLOADING, PlayState.VERIFYING, PlayState.UPDATING, PlayState.PREPARING, PlayState.LAUNCHING, PlayState.PLAYING)
-    val canPlay = selected != null && selected.effectiveVersionId in ui.installed && selected.installationState !in setOf("pending", "installing", "incomplete")
+    val canPlay = state == PlayState.READY || state == PlayState.LAUNCH_FAILED
     val actionText = when (state) {
         PlayState.NO_PROFILE -> "CREATE INSTALLATION"
         PlayState.INSTALL -> "INSTALL"
         PlayState.LAUNCH_FAILED -> "TRY AGAIN"
-        PlayState.REPAIR_REQUIRED -> "REPAIR INSTALLATION"
-        PlayState.DOWNLOADING, PlayState.UPDATING -> "${state.label.uppercase()}${currentJob?.fraction?.let { " · ${(it * 100).toInt()}%" }.orEmpty()}"
-        PlayState.PREPARING, PlayState.VERIFYING, PlayState.LAUNCHING -> "${state.label.uppercase()}…"
+        PlayState.REPAIR_REQUIRED -> "REPAIR"
+        PlayState.DOWNLOADING, PlayState.UPDATING -> "${state.label.uppercase()}${currentJob?.fraction?.let { " ${(it * 100).toInt()}%" }.orEmpty()}"
+        PlayState.PREPARING, PlayState.VERIFYING, PlayState.LAUNCHING, PlayState.PLAYING -> state.label.uppercase()
         else -> "PLAY"
     }
-    var feed by remember { mutableStateOf<List<OfficialPatchNote>>(emptyList()) }
-    var feedLoading by remember { mutableStateOf(true) }
-    var feedError by remember { mutableStateOf(false) }
     var profileMenu by remember { mutableStateOf(false) }
-    var newsDialog by remember { mutableStateOf<OfficialPatchNote?>(null) }
     var showFailure by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val refreshFeed: () -> Unit = {
-        scope.launch {
-            feedLoading = true
-            val result = withContext(Dispatchers.IO) { runCatching { OfficialMinecraftFeed.load(context.applicationContext, forceRefresh = true) } }
-            feed = result.getOrDefault(emptyList())
-            feedError = result.isFailure || feed.isEmpty()
-            feedLoading = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val result = withContext(Dispatchers.IO) { runCatching { OfficialMinecraftFeed.load(context.applicationContext) } }
-        feed = result.getOrDefault(emptyList())
-        feedLoading = false
-        feedError = result.isFailure || feed.isEmpty()
-    }
-
-    val recentNews = feed.take(12)
-
     if (showFailure) ui.failure?.let { failure ->
         val fix = failure.issues.firstOrNull { it.fix != FixAction.NONE }?.fix
         AlertDialog(onDismissRequest = { showFailure = false }, containerColor = Color(0xFF171D24),
             titleContentColor = Color.White, textContentColor = Color.White,
-            title = { Text(failure.title) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            title = { Text(failure.title) }, text = { Column(Modifier.verticalScroll(rememberScrollState())) {
                 failure.issues.forEach { Text("• ${it.message}", modifier = Modifier.padding(bottom = 5.dp)) }
                 failure.diagnoses.forEach { Text("${it.kind.title}: ${it.explanation}", modifier = Modifier.padding(bottom = 5.dp)) }
-            } },
-            confirmButton = { TextButton(onClick = {
+            } }, confirmButton = { TextButton(onClick = {
                 showFailure = false
                 when (fix) {
                     FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> selected?.let { vm.repair(it.effectiveVersionId) }
@@ -118,100 +93,82 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
                     FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> selected?.let { onOpen(Overlay.EditProfile(it.id)) }
                     else -> onOpen(Overlay.Logs)
                 }
-            }) { Text(when (fix) {
-                FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> "Repair"
-                FixAction.SIGN_IN -> "Sign in"
-                FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT, FixAction.FREE_STORAGE -> "Settings"
-                FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> "Edit profile"
-                else -> "Open logs"
-            }, color = launcherGreen) } },
+            }) { Text(if (fix == null || fix == FixAction.NONE) "Open logs" else "Fix issue", color = launcherGreen) } },
             dismissButton = { TextButton(onClick = { showFailure = false; vm.dismissFailure() }) { Text("Dismiss") } })
     }
-
-    if (config.screenWidthDp < 600) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Color(0xFF0C1116))) {
-            Box(Modifier.fillMaxWidth().height(230.dp)) {
-                Image(painterResource(R.drawable.launcher_reference_hero), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x18000000), Color(0xD9000000)))))
-                Column(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
-                    AccountButton(ui.activeAccount?.username ?: "Add account", ui.activeAccount?.type == AccountType.OFFLINE) { onOpen(Overlay.Accounts) }
-                }
-                Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
-                    Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 32.sp)
-                    Text("JAVA EDITION  ·  ${selected?.versionId ?: ui.manifest?.latestRelease ?: "Choose a version"}", color = Color.White.copy(alpha = 0.86f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                }
+    Box(Modifier.fillMaxSize().background(Color(0xFF101113))) {
+        Image(painterResource(R.drawable.cubiq_style_hero), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x33000000), 0.5f to Color.Transparent, 0.8f to Color(0x99000000), 1f to Color(0xF20B0C0E))))
+        Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            IconSquare("download", "Downloads") { onTab(Tab.DOWNLOADS) }
+            IconSquare("settings", "Settings") { onTab(Tab.SETTINGS) }
+        }
+        Column(Modifier.align(Alignment.TopCenter).padding(top = 38.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 36.sp, maxLines = 1,
+                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(4f, 5f), 3f)))
+            Text("JAVA EDITION", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 15.sp, lineHeight = 20.sp,
+                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(3f, 4f), 3f)))
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (currentJob != null) {
+                Box(Modifier.clickable { onTab(Tab.DOWNLOADS) }) { InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}") }
+            } else if (isBusy) {
+                LaunchBusyIndicator(state.label)
             }
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
-                PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state, { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() })
-                if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
-                ui.failure?.let { failure -> Text(failure.title + "  ·  Details", color = Color(0xFFFFA5A0), modifier = Modifier.clickable { showFailure = true }.padding(5.dp)) }
-                QuickActions(onTab, onOpen)
-                BottomStatus(selected, state, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb ?: vm.recommendedHeapMb(), onOpen, onTab)
-                NewsSection(recentNews, feedLoading, feedError, refreshFeed, { newsDialog = it })
+            ui.failure?.let { failure ->
+                Text(failure.title + "  ·  Details", color = Color(0xFFFFA5A0), fontSize = 10.sp, maxLines = 1,
+                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xE01A2026)).clickable { showFailure = true }.padding(6.dp))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
+                }
+                PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state,
+                    { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.weight(1f).height(48.dp))
             }
         }
-        newsDialog?.let { NoteDialog(it, { newsDialog = null }, { openOfficialArticle(context, it) }) }
-        return
     }
+}
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF0B0F13))) {
-        Image(painterResource(R.drawable.launcher_reference_hero), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0x65000000), Color(0x26000000), Color(0x95000000)))))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x16000000), Color(0x12000000), Color(0x75000000)))))
-        Column(Modifier.fillMaxSize().padding(start = 14.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                AccountButton(ui.activeAccount?.username ?: "Add account", ui.activeAccount?.type == AccountType.OFFLINE) { onOpen(Overlay.Accounts) }
-                Spacer(Modifier.width(6.dp))
-                IconSquare("head", "Accounts") { onOpen(Overlay.Accounts) }
-                Spacer(Modifier.width(6.dp))
-                IconSquare("settings", "Settings") { onTab(Tab.SETTINGS) }
-            }
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1.65f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Top) {
-                        Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 35.sp, lineHeight = 38.sp, maxLines = 1,
-                            style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(4f, 5f), 3f)))
-                        Text("JAVA EDITION", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 20.sp,
-                            modifier = Modifier.padding(start = 44.dp), style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(3f, 4f), 3f)))
-                    }
-                    Box(Modifier.fillMaxWidth(0.76f)) {
-                        ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state,
-                            { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.weight(1f).height(55.dp))
-                        IconSquare("list", "Choose installation") { profileMenu = true }
-                    }
-                    if (currentJob != null) InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}")
-                    ui.failure?.let { failure ->
-                        Text(failure.title + "  ·  Details", color = Color(0xFFFFA5A0), fontSize = 10.sp, maxLines = 1,
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xD91A2026)).clickable { showFailure = true }.padding(5.dp))
-                    }
-                    QuickActions(onTab, onOpen)
-                }
-                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Color(0xED0B1016))
-                    .border(1.dp, Color(0xFF303943), RoundedCornerShape(10.dp)).padding(8.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Latest News", color = Color.White, fontFamily = Monocraft, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text("View All  →", color = Color.White, fontSize = 10.sp, modifier = Modifier.clickable { openMinecraftNews(context) }.padding(4.dp))
-                    }
-                    if (feedLoading && recentNews.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = launcherGreen, modifier = Modifier.size(24.dp), strokeWidth = 2.dp) }
-                    } else if (recentNews.isEmpty()) {
-                        NewsEmpty(feedError, refreshFeed)
-                    } else {
-                        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(bottom = 2.dp)) {
-                            items(recentNews.take(5)) { note -> NewsCard(note, { newsDialog = note }) }
-                        }
-                    }
-                }
-            }
-            BottomStatus(selected, state, vm.recommendedHeapMb(), selected?.memoryMb ?: settings.defaultMemoryMb ?: vm.recommendedHeapMb(), onOpen, onTab)
+@Composable
+private fun LaunchBusyIndicator(label: String) {
+    val reduce = LocalReduceMotion.current
+    val transition = rememberInfiniteTransition(label = "launch")
+    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "block-rotation")
+    Row(Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xD916181B)).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        PixelIcon("grass", Modifier.rotate(if (reduce) 0f else angle), size = 20.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = Color.White, fontFamily = Monocraft, fontSize = 10.sp)
+    }
+}
+
+/** Live official Java news and patch notes; no hard-coded release claims. */
+@Composable
+fun OfficialNewsScreen(patchNotes: Boolean, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var feed by remember { mutableStateOf<List<OfficialPatchNote>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf<OfficialPatchNote?>(null) }
+    val scope = rememberCoroutineScope()
+    val load: (Boolean) -> Unit = { force -> scope.launch {
+        loading = true
+        val result = withContext(Dispatchers.IO) { runCatching { OfficialMinecraftFeed.load(context.applicationContext, forceRefresh = force) } }
+        feed = result.getOrDefault(emptyList())
+        error = result.isFailure || feed.isEmpty()
+        loading = false
+    } }
+    LaunchedEffect(Unit) { load(false) }
+    Column(Modifier.fillMaxSize().background(Color(0xFF141416)).padding(14.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (patchNotes) "PATCH NOTES" else "LATEST NEWS", color = Color.White, fontFamily = Monocraft, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text("BACK", color = launcherGreen) }
+        }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            NewsSection(feed, loading, error, { load(true) }, { selected = it })
         }
     }
-
-    newsDialog?.let { NoteDialog(it, { newsDialog = null }, { openOfficialArticle(context, it) }) }
+    selected?.let { note -> NoteDialog(note, { selected = null }, { openOfficialArticle(context, note) }) }
 }
 
 @Composable
@@ -267,30 +224,24 @@ private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, latestRe
 
 @Composable
 private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: PlayState, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
-    val danger = state == PlayState.REPAIR_REQUIRED
-    val bg = if (danger) Color(0xFFB93D32) else launcherGreen
-    val shape = RoundedCornerShape(9.dp)
-    Row(modifier.clip(shape).background(Brush.verticalGradient(listOf(bg, if (danger) Color(0xFF8F2A25) else launcherGreenShade)))
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val reduce = LocalReduceMotion.current
+    val pressOffset by animateDpAsState(if (pressed && enabled) 2.dp else 0.dp, if (reduce) snap() else tween(90), label = "play-press")
+    val top = when { !enabled -> Color(0xFF3A5D36); state == PlayState.REPAIR_REQUIRED -> Color(0xFFB93D32); pressed -> Color(0xFF286F1C); else -> Color(0xFF58B62F) }
+    val bottom = when { !enabled -> Color(0xFF263B25); state == PlayState.REPAIR_REQUIRED -> Color(0xFF8F2A25); pressed -> Color(0xFF1E5815); else -> Color(0xFF3E8E22) }
+    Row(modifier.clip(RoundedCornerShape(3.dp)).background(Brush.verticalGradient(listOf(top, bottom)))
+        .border(2.dp, Color(0xFF1B3D14), RoundedCornerShape(3.dp))
         .drawBehind {
-            val cell = 14.dp.toPx()
-            var y = 0f
-            var row = 0
-            while (y < size.height) {
-                var x = 0f
-                var col = 0
-                while (x < size.width) {
-                    if ((row + col) % 3 == 0) drawRect(Color.White.copy(alpha = 0.07f), Offset(x, y), Size(cell * 0.92f, cell * 0.92f))
-                    x += cell
-                    col++
-                }
-                y += cell
-                row++
-            }
+            val bevel = 3.dp.toPx()
+            drawRect(if (pressed) Color(0xFF1E520F) else Color(0xFF7AE842), Offset(2.dp.toPx(), 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
+            drawRect(if (pressed) Color(0xFF7AE842) else Color(0xFF1E520F), Offset(2.dp.toPx(), size.height - bevel - 2.dp.toPx()), Size(size.width - 4.dp.toPx(), bevel))
         }
-        .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        PixelIcon(if (canPlay) "play" else "download", size = 34.dp, tint = Color.White)
-        Spacer(Modifier.width(8.dp))
-        Text(text, color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+        .padding(horizontal = 8.dp).offset(y = pressOffset), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        PixelIcon(if (canPlay) "play" else "download", size = 22.dp, tint = Color.White)
+        Spacer(Modifier.width(7.dp))
+        Text(text, color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

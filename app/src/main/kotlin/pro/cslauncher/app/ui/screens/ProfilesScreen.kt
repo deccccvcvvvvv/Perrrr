@@ -51,6 +51,7 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
     var creating by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<String?>(null) }
     var importing by remember { mutableStateOf(false) }
+    var search by remember { mutableStateOf("") }
     var menuFor by remember { mutableStateOf<Profile?>(null) }
     val mrpackPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
@@ -60,51 +61,46 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenHeader("Profiles") {
+        ScreenHeader("Installations") {
             HeaderAction("Modpack", "chest", { mrpackPicker.launch(arrayOf("*/*")) })
             HeaderAction("OptiFine", "bolt", { onOpen(Overlay.OptiFine(ui.selected?.id)) })
             HeaderAction("Import profile JSON", "upload", { importing = true }, compact = true)
             HeaderAction("New", "plus", { creating = true }, style = PxStyle.PRIMARY)
         }
-        if (ui.profiles.profiles.isEmpty()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            PixelTextField(search, { search = it }, Modifier.weight(1f), placeholder = "Search installations...")
+        }
+        val filtered = ui.profiles.profiles.filter { it.name.contains(search, ignoreCase = true) || it.versionId.contains(search, ignoreCase = true) }
+        if (filtered.isEmpty()) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                PixelIcon("grass", size = 64.dp)
-                Spacer(Modifier.height(12.dp))
-                PixelTitle("No profiles yet", fontSize = 16.sp)
-                Spacer(Modifier.height(12.dp))
-                PixelButton("Create your first profile", { creating = true }, style = PxStyle.PRIMARY, icon = "plus")
+                PixelIcon("grass", size = 55.dp)
+                Spacer(Modifier.height(10.dp))
+                PixelTitle(if (ui.profiles.profiles.isEmpty()) "No installations yet" else "No installations found", fontSize = 15.sp)
+                if (ui.profiles.profiles.isEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    PixelButton("Create installation", { creating = true }, style = PxStyle.PRIMARY, icon = "plus")
+                }
             }
-        } else LazyVerticalGrid(GridCells.Adaptive(220.dp), Modifier.fillMaxSize().padding(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp)) {
-            itemsIndexed(ui.profiles.profiles, key = { _, it -> it.id }) { i, pr ->
+        } else LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp)) {
+            items(filtered, key = { it.id }) { pr ->
                 val sel = pr.id == ui.selected?.id
-                val installed = pr.effectiveVersionId in ui.installed
-                PixelPanel(Modifier.fillMaxWidth().staggerIn(i).clickable { vm.select(pr.id) }, selected = sel, padding = 8.dp) {
+                val installed = pr.effectiveVersionId in ui.installed && pr.installationState !in listOf("pending", "installing", "incomplete")
+                PixelPanel(Modifier.fillMaxWidth().clickable { vm.select(pr.id) }, selected = sel, padding = 7.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PixelSlot(size = 42.dp) { ProfileIconImage(pr, 28.dp) }
-                        Spacer(Modifier.width(8.dp))
+                        ProfileIconImage(pr, 38.dp)
+                        Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            PixelTitle(pr.name, fontSize = 13.sp)
-                            Text(profileSubtitle(pr), color = p.textSecondary, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(pr.lastPlayedAtMs?.let { "Played ${relativeTime(it)}" } ?: "Never played", color = p.textMuted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1)
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                        androidx.compose.foundation.layout.FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            when {
-                                pr.effectiveVersionId in ui.needsRepair -> Badge("REPAIR", p.danger, icon = "warning")
-                                pr.installationState in listOf("pending", "installing", "incomplete") -> Badge(pr.installationState.uppercase(), p.warning)
-                                installed -> Badge("READY", icon = "check")
-                                else -> Badge("NOT INSTALLED", Color(0xFFB0B0B0), icon = "download")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(pr.name, color = p.text, fontFamily = Monocraft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (sel) { Spacer(Modifier.width(6.dp)); Badge("ACTIVE", p.success) }
                             }
-                            if (pr.lastRun?.outcome == RunOutcome.CRASHED) Badge("CRASHED", p.danger)
+                            Text(profileSubtitle(pr), color = p.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (pr.effectiveVersionId in ui.needsRepair) "Repair required" else if (installed) "Ready" else "Not installed", color = p.textMuted, fontSize = 9.sp)
                         }
-                        PixelIconButton("edit", "Edit ${pr.name}", { onEdit(pr.id) }, size = 30.dp)
-                        Spacer(Modifier.width(4.dp))
-                        PixelIconButton("more", "More options for ${pr.name}", { menuFor = pr }, size = 30.dp)
+                        PixelButton(if (installed) "Play" else "Install", { vm.playProfile(pr.id) }, height = 34.dp, fontSize = 10.sp, style = PxStyle.PRIMARY, enabled = !ui.launching && !ui.gameRunning)
+                        Spacer(Modifier.width(5.dp))
+                        PixelIconButton("more", "Installation options", { menuFor = pr }, size = 34.dp)
                     }
                 }
             }
