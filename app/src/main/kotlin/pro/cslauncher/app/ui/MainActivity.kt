@@ -169,7 +169,7 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
             Column(Modifier.fillMaxSize()) {
                 ScreenArea(Modifier.weight(1f).fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)))
-                NavBottomBar(tab, activeJobs) { t -> overlay = null; tab = t }
+                NavBottomBar(tab, overlay, activeJobs, onSelectTab = { t -> overlay = null; tab = t }, onOpenOverlay = { o -> overlay = o })
             }
         } else {
             Row(Modifier.fillMaxSize()) {
@@ -182,40 +182,51 @@ fun LauncherApp(vm: LauncherViewModel, animatedBackground: Boolean = true, initi
     }
 }
 
-/** Landscape navigation inspired by the reference launcher, wired to this launcher's screens. */
+/** Landscape navigation matching Cubiq Launcher 210dp sidebar layout, wired to CS Launcher screens. */
 @Composable
 internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, accountName: String?, accountType: String?, onSelect: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    data class Destination(val label: String, val icon: String, val tab: Tab? = null, val overlay: Overlay? = null)
+    data class Destination(val label: String, val iconRes: Int? = null, val pixelIcon: String? = null, val tab: Tab? = null, val overlay: Overlay? = null)
     val destinations = listOf(
-        Destination("Play", "home", tab = Tab.HOME),
-        Destination("Installations", "grass", tab = Tab.PROFILES),
-        Destination("Skins", "head", overlay = Overlay.Skins),
-        Destination("Patch Notes", "book", overlay = Overlay.News(true)),
-        Destination("News", "image", overlay = Overlay.News(false)),
-        Destination("Mods", "pickaxe", tab = Tab.BROWSE),
-        Destination("Profile", "head", overlay = Overlay.Accounts),
-        Destination("Multiplayer", "world", overlay = Overlay.Servers),
-        Destination("Downloads", "download", tab = Tab.DOWNLOADS),
-        Destination("Settings", "settings", tab = Tab.SETTINGS),
-        Destination("Resource Packs", "painting", overlay = Overlay.Content(ContentSection.RESOURCE_PACKS)),
-        Destination("Shaders", "sun", overlay = Overlay.Content(ContentSection.SHADERS)),
-        Destination("Worlds", "world", overlay = Overlay.Content(ContentSection.WORLDS)),
-        Destination("Screenshots", "image", overlay = Overlay.Content(ContentSection.SCREENSHOTS)),
-        Destination("Recordings", "record", overlay = Overlay.Content(ContentSection.RECORDINGS)),
+        Destination("Play", iconRes = R.drawable.ic_mc_pc_versions, tab = Tab.HOME),
+        Destination("Installations", iconRes = R.drawable.block_crafting_table, tab = Tab.PROFILES),
+        Destination("Skins", iconRes = R.drawable.ic_mc_steve_head, overlay = Overlay.Skins),
+        Destination("Patch Notes", iconRes = R.drawable.ic_mc_book_and_quill, overlay = Overlay.News(true)),
+        Destination("News", iconRes = R.drawable.ic_mc_pc_news, overlay = Overlay.News(false)),
+        Destination("Mods", iconRes = R.drawable.ic_mc_pc_mods, tab = Tab.BROWSE),
+        Destination("Profile", iconRes = R.drawable.ic_mc_pc_profile, overlay = Overlay.Accounts),
+        Destination("Multiplayer", iconRes = R.drawable.block_bookshelf, overlay = Overlay.Servers),
+        Destination("Downloads", iconRes = R.drawable.ic_download, tab = Tab.DOWNLOADS),
+        Destination("Settings", iconRes = R.drawable.ic_settings_filled, tab = Tab.SETTINGS),
+        Destination("Resource Packs", pixelIcon = "painting", overlay = Overlay.Content(ContentSection.RESOURCE_PACKS)),
+        Destination("Shaders", pixelIcon = "sun", overlay = Overlay.Content(ContentSection.SHADERS)),
+        Destination("Worlds", pixelIcon = "world", overlay = Overlay.Content(ContentSection.WORLDS)),
+        Destination("Screenshots", pixelIcon = "image", overlay = Overlay.Content(ContentSection.SCREENSHOTS)),
+        Destination("Recordings", pixelIcon = "record", overlay = Overlay.Content(ContentSection.RECORDINGS)),
     )
-    BoxWithConstraints(Modifier.fillMaxHeight().width(160.dp).background(Color(0xFF141517))) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 6.dp)) {
-            Row(Modifier.fillMaxWidth().clickable { onOpen(Overlay.Accounts) }.padding(horizontal = 7.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PixelIcon("head", size = 30.dp)
+    BoxWithConstraints(Modifier.fillMaxHeight().width(210.dp).background(Color(0xFF141517)).border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF232528)))) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp)) {
+            // Profile Pill
+            Row(Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                .background(Color(0xFF1B1D20))
+                .border(androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF1E88E5)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                .clickable { MinecraftUiClickSound.play(context); onOpen(Overlay.Accounts) }
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.ic_mc_pc_profile),
+                    contentDescription = "Avatar",
+                    modifier = Modifier.size(34.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(accountName ?: "Add account", color = Color.White, fontFamily = Monocraft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(accountType?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Not signed in", color = Color(0xFFAAAAAA), fontSize = 9.sp, maxLines = 1)
+                    Text(accountName ?: "Add account", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(accountType?.let { "(${it.lowercase().replaceFirstChar(Char::uppercase)})" } ?: "(Offline)", color = Color(0xFFAAAAAA), fontFamily = Monocraft, fontSize = 10.sp, maxLines = 1)
                 }
             }
-            Spacer(Modifier.height(5.dp))
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 destinations.forEach { destination ->
                     val isSelected = when {
                         destination.tab != null && activeOverlay == null -> selected == destination.tab
@@ -223,20 +234,38 @@ internal fun NavRail(selected: Tab, activeOverlay: Overlay?, activeJobs: Int, ac
                         destination.overlay != null -> destination.overlay == activeOverlay
                         else -> false
                     }
-                    Row(Modifier.fillMaxWidth().heightIn(min = 32.dp)
-                        .background(if (isSelected) Color(0xFF28352B) else Color.Transparent, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                        .drawBehind { if (isSelected) drawRect(Color(0xFF4BC82A), size = Size(3.dp.toPx(), size.height)) }
+                    val bgModifier = if (isSelected) {
+                        Modifier.background(Color(0xFF1E3A19), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .border(androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF55FF55)), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                    } else {
+                        Modifier.background(Color.Transparent)
+                    }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 36.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                        .then(bgModifier)
                         .clickable {
                             MinecraftUiClickSound.play(context)
                             when {
                                 destination.tab != null -> onSelect(destination.tab)
                                 destination.overlay != null -> onOpen(destination.overlay)
                             }
-                        }.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PixelIcon(destination.icon, size = 19.dp, tint = Color(0xFFE4E6E8))
-                        Spacer(Modifier.width(9.dp))
-                        Text(destination.label, color = if (isSelected) Color.White else Color(0xFFCACDD0), fontFamily = Monocraft, fontSize = 10.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                        if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) Text(activeJobs.toString(), color = Color(0xFF83E25B), fontSize = 9.sp)
+                        }.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (destination.iconRes != null) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(destination.iconRes),
+                                contentDescription = destination.label,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else if (destination.pixelIcon != null) {
+                            PixelIcon(destination.pixelIcon, size = 20.dp, tint = Color(0xFFE4E6E8))
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(destination.label, color = if (isSelected) Color.White else Color(0xFFAAAAAA), fontFamily = Monocraft, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        if (destination.tab == Tab.DOWNLOADS && activeJobs > 0) {
+                            Box(modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).background(Color(0xFF38C916)).padding(horizontal = 5.dp, vertical = 1.dp)) {
+                                Text(activeJobs.toString(), color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = Monocraft)
+                            }
+                        }
                     }
                 }
             }

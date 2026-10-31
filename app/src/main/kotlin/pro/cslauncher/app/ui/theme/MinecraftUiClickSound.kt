@@ -26,26 +26,22 @@ object MinecraftUiClickSound {
             return
         }
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastLookupAtMs >= 60_000L && !loading) loadInstalledMinecraftSound(now)
+        if (now - lastLookupAtMs >= 60_000L && !loading) loadSound(context.applicationContext, now)
         if (pool == null || !loaded) {
-            // Until a Minecraft profile's sound assets exist, keep a quiet native click on every supported Android version.
             runCatching { context.getSystemService(AudioManager::class.java).playSoundEffect(AudioManager.FX_KEY_CLICK, 0.35f) }
         }
     }
 
-    private fun loadInstalledMinecraftSound(now: Long) {
+    private fun loadSound(context: Context, now: Long) {
         synchronized(lock) {
             if (pool != null || loading || now - lastLookupAtMs < 60_000L) return
             lastLookupAtMs = now
             loading = true
         }
-        // Index scans and file reads happen away from the UI thread; the system click is used until SoundPool is ready.
         Thread({
-            val source = findClickAsset()
-            if (source == null) { loading = false; return@Thread }
             val candidate = runCatching {
                 SoundPool.Builder()
-                    .setMaxStreams(3)
+                    .setMaxStreams(4)
                     .setAudioAttributes(AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -63,6 +59,17 @@ object MinecraftUiClickSound {
                     pool = null
                 }
             }
+            // First try packaged raw sound
+            val rawId = runCatching { candidate.load(context, pro.cslauncher.app.R.raw.minecraft_click, 1) }.getOrDefault(0)
+            if (rawId != 0) {
+                sampleId = rawId
+                pool = candidate
+                loading = false
+                return@Thread
+            }
+            // Fall back to installed asset
+            val source = findClickAsset()
+            if (source == null) { candidate.release(); loading = false; return@Thread }
             val id = runCatching { candidate.load(source.toString(), 1) }.getOrDefault(0)
             if (id == 0) {
                 runCatching { candidate.release() }

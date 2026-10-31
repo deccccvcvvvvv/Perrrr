@@ -1,42 +1,39 @@
 package pro.cslauncher.app.ui.screens
 
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.net.Uri
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,6 +42,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pro.cslauncher.app.R
 import pro.cslauncher.app.Services
+import pro.cslauncher.app.install.InstallJob
 import pro.cslauncher.app.ui.LauncherViewModel
 import pro.cslauncher.app.ui.Overlay
 import pro.cslauncher.app.ui.PlayState
@@ -59,16 +57,24 @@ import java.util.Date
 import java.util.Locale
 
 private val launcherGreen = Color(0xFF38C916)
-private val launcherGreenShade = Color(0xFF25960D)
 
-/** Reference-inspired launcher shell. Profiles, installs and launch remain backed by our own core. */
+/**
+ * Authentic Cubiq Launcher / Minecraft Java Edition PC Replica Home Screen.
+ * Profiles, installs, accounts and launch coordination backed by our core engine.
+ */
 @Composable
-fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTab: (Tab) -> Unit) {
+fun MinecraftLauncherHome(
+    vm: LauncherViewModel,
+    onOpen: (Overlay) -> Unit,
+    onTab: (Tab) -> Unit
+) {
+    val context = LocalContext.current
     val ui by vm.ui.collectAsStateWithLifecycle()
     val jobs by vm.jobs.collectAsStateWithLifecycle()
     val selected = ui.selected
     val state = vm.playState(ui, jobs)
     val currentJob = selected?.let { (jobs["task:profile-${it.id}"] ?: jobs[it.effectiveVersionId])?.takeIf { job -> job.active } }
+        ?: jobs.values.firstOrNull { it.active }
     val isBusy = state in setOf(PlayState.DOWNLOADING, PlayState.VERIFYING, PlayState.UPDATING, PlayState.PREPARING, PlayState.LAUNCHING, PlayState.PLAYING)
     val canPlay = state == PlayState.READY || state == PlayState.LAUNCH_FAILED
     val actionText = when (state) {
@@ -80,73 +86,892 @@ fun MinecraftLauncherHome(vm: LauncherViewModel, onOpen: (Overlay) -> Unit, onTa
         PlayState.PREPARING, PlayState.VERIFYING, PlayState.LAUNCHING, PlayState.PLAYING -> state.label.uppercase()
         else -> "PLAY"
     }
-    var profileMenu by remember { mutableStateOf(false) }
+
     var showFailure by remember { mutableStateOf(false) }
+    var showAddOfflineDialog by remember { mutableStateOf(false) }
+    var showAddElybyDialog by remember { mutableStateOf(false) }
+    var offlineUsername by remember { mutableStateOf("") }
+    var elyName by remember { mutableStateOf("") }
+    var elyPassword by remember { mutableStateOf("") }
+    var elyOtp by remember { mutableStateOf("") }
+
     if (showFailure) ui.failure?.let { failure ->
         val fix = failure.issues.firstOrNull { it.fix != FixAction.NONE }?.fix
-        AlertDialog(onDismissRequest = { showFailure = false }, containerColor = Color(0xFF171D24),
-            titleContentColor = Color.White, textContentColor = Color.White,
-            title = { Text(failure.title) }, text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-                failure.issues.forEach { Text("• ${it.message}", modifier = Modifier.padding(bottom = 5.dp)) }
-                failure.diagnoses.forEach { Text("${it.kind.title}: ${it.explanation}", modifier = Modifier.padding(bottom = 5.dp)) }
-            } }, confirmButton = { TextButton(onClick = {
-                showFailure = false
-                when (fix) {
-                    FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> selected?.let { vm.repair(it.effectiveVersionId) }
-                    FixAction.SIGN_IN -> onOpen(Overlay.Accounts)
-                    FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT, FixAction.FREE_STORAGE -> onTab(Tab.SETTINGS)
-                    FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> selected?.let { onOpen(Overlay.EditProfile(it.id)) }
-                    else -> onOpen(Overlay.Logs)
+        AlertDialog(
+            onDismissRequest = { showFailure = false },
+            containerColor = Color(0xFF171D24),
+            titleContentColor = Color.White,
+            textContentColor = Color.White,
+            title = { Text(failure.title, fontFamily = Monocraft, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    failure.issues.forEach { Text("• ${it.message}", modifier = Modifier.padding(bottom = 5.dp)) }
+                    failure.diagnoses.forEach { Text("${it.kind.title}: ${it.explanation}", modifier = Modifier.padding(bottom = 5.dp)) }
                 }
-            }) { Text(if (fix == null || fix == FixAction.NONE) "Open logs" else "Fix issue", color = launcherGreen) } },
-            dismissButton = { TextButton(onClick = { showFailure = false; vm.dismissFailure() }) { Text("Dismiss") } })
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showFailure = false
+                    when (fix) {
+                        FixAction.INSTALL_VERSION, FixAction.REPAIR_INSTALLATION -> selected?.let { vm.repair(it.effectiveVersionId) }
+                        FixAction.SIGN_IN -> onOpen(Overlay.Accounts)
+                        FixAction.INSTALL_RUNTIME, FixAction.INSTALL_COMPONENT, FixAction.FREE_STORAGE -> onTab(Tab.SETTINGS)
+                        FixAction.CHOOSE_RENDERER, FixAction.EDIT_PROFILE, FixAction.INSTALL_LOADER, FixAction.FIX_GAME_DIRECTORY -> selected?.let { onOpen(Overlay.EditProfile(it.id)) }
+                        else -> onOpen(Overlay.Logs)
+                    }
+                }) {
+                    Text(if (fix == null || fix == FixAction.NONE) "Open logs" else "Fix issue", color = launcherGreen, fontFamily = Monocraft)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFailure = false; vm.dismissFailure() }) {
+                    Text("Dismiss", color = Color(0xFFAAAAAA), fontFamily = Monocraft)
+                }
+            }
+        )
     }
-    Box(Modifier.fillMaxSize().background(Color(0xFF101113))) {
-        Image(painterResource(R.drawable.cubiq_style_hero), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x33000000), 0.5f to Color.Transparent, 0.8f to Color(0x99000000), 1f to Color(0xF20B0C0E))))
-        Row(Modifier.align(Alignment.TopEnd).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PixelButton("MULTIPLAYER", { onOpen(Overlay.Servers) }, icon = "world", height = 38.dp, fontSize = 10.sp)
-            IconSquare("download", "Downloads") { onTab(Tab.DOWNLOADS) }
-            IconSquare("settings", "Settings") { onTab(Tab.SETTINGS) }
-        }
-        Column(Modifier.align(Alignment.TopCenter).padding(top = 38.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("MINECRAFT", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 36.sp, maxLines = 1,
-                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(4f, 5f), 3f)))
-            Text("JAVA EDITION", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 15.sp, lineHeight = 20.sp,
-                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, Offset(3f, 4f), 3f)))
-        }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (currentJob != null) {
-                Box(Modifier.clickable { onTab(Tab.DOWNLOADS) }) { InstallProgress(currentJob.fraction, "${currentJob.stage} · ${currentJob.finishedFiles}/${currentJob.totalFiles}") }
-            } else if (isBusy) {
-                LaunchBusyIndicator(state.label)
-            }
-            ui.failure?.let { failure ->
-                Text(failure.title + "  ·  Details", color = Color(0xFFFFA5A0), fontSize = 10.sp, maxLines = 1,
-                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xE01A2026)).clickable { showFailure = true }.padding(6.dp))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    ProfileChooser(selected, ui.profiles.profiles, ui.manifest?.latestRelease, profileMenu, { profileMenu = it }, vm, onTab)
+
+    // Add Offline Account Dialog
+    if (showAddOfflineDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddOfflineDialog = false },
+            containerColor = Color(0xFF1E1E20),
+            titleContentColor = Color.White,
+            title = { Text("Add Offline Account", fontFamily = Monocraft, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter your player username:", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = offlineUsername,
+                        onValueChange = { offlineUsername = it },
+                        singleLine = true,
+                        placeholder = { Text("Player name", color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF55FF55),
+                            unfocusedBorderColor = Color(0xFF444444),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
                 }
-                PlayAction(actionText, canPlay, !isBusy && !ui.launching && !ui.gameRunning, state,
-                    { if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction() }, Modifier.weight(1f).height(48.dp))
+            },
+            confirmButton = {
+                CubiqMinecraftButton(
+                    onClick = {
+                        val name = offlineUsername.trim()
+                        if (name.isNotEmpty()) {
+                            vm.addOffline(name)
+                            showAddOfflineDialog = false
+                            offlineUsername = ""
+                        }
+                    },
+                    style = MinecraftButtonStyle.GREEN,
+                    text = "Add Account",
+                    fontSize = 12.sp,
+                    modifier = Modifier.height(34.dp)
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddOfflineDialog = false }) {
+                    Text("Cancel", color = Color(0xFFAAAAAA), fontFamily = Monocraft)
+                }
+            }
+        )
+    }
+
+    // Add Ely.by Account Dialog
+    if (showAddElybyDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddElybyDialog = false },
+            containerColor = Color(0xFF1E1E20),
+            titleContentColor = Color.White,
+            title = { Text("Add Ely.by Account", fontFamily = Monocraft, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Sign in with your Ely.by credentials:", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = elyName,
+                        onValueChange = { elyName = it },
+                        singleLine = true,
+                        placeholder = { Text("Email or Username", color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF55FF55),
+                            unfocusedBorderColor = Color(0xFF444444),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    OutlinedTextField(
+                        value = elyPassword,
+                        onValueChange = { elyPassword = it },
+                        singleLine = true,
+                        placeholder = { Text("Password", color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF55FF55),
+                            unfocusedBorderColor = Color(0xFF444444),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    OutlinedTextField(
+                        value = elyOtp,
+                        onValueChange = { elyOtp = it },
+                        singleLine = true,
+                        placeholder = { Text("2FA Code (Optional)", color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF55FF55),
+                            unfocusedBorderColor = Color(0xFF444444),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                CubiqMinecraftButton(
+                    onClick = {
+                        val name = elyName.trim()
+                        val pass = elyPassword
+                        if (name.isNotEmpty() && pass.isNotEmpty()) {
+                            vm.addElyBy(name, pass, elyOtp.trim())
+                            showAddElybyDialog = false
+                            elyName = ""
+                            elyPassword = ""
+                            elyOtp = ""
+                        }
+                    },
+                    style = MinecraftButtonStyle.GREEN,
+                    text = "Sign In",
+                    fontSize = 12.sp,
+                    modifier = Modifier.height(34.dp)
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddElybyDialog = false }) {
+                    Text("Cancel", color = Color(0xFFAAAAAA), fontFamily = Monocraft)
+                }
+            }
+        )
+    }
+
+    Box(Modifier.fillMaxSize().background(Color(0xFF0F1012))) {
+        // High-res Wilderness Bound Key Art Background
+        Image(
+            painter = painterResource(R.drawable.img_hero_wilderness),
+            contentDescription = "Minecraft Java Edition",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alignment = Alignment.Center
+        )
+
+        // Gradient Scrim Overlay for contrast
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Transparent,
+                        0.50f to Color.Transparent,
+                        0.75f to Color(0x99000000),
+                        1.0f to Color(0xF00B0C0E)
+                    )
+                )
+        )
+
+        // Main Layout Column
+        Column(Modifier.fillMaxSize()) {
+            // 1. Top Account Header & Action Bar
+            TopAccountHeaderBar(
+                activeAccountName = ui.activeAccount?.username,
+                activeAccountType = ui.activeAccount?.type?.name,
+                accounts = ui.accounts.accounts,
+                activeAccountId = ui.accounts.activeId,
+                onSelectAccount = { vm.setActiveAccount(it) },
+                onAddOffline = { showAddOfflineDialog = true },
+                onAddMicrosoft = { vm.startMicrosoft() },
+                onAddElyby = { showAddElybyDialog = true },
+                onManageAccounts = { onOpen(Overlay.Accounts) },
+                onOpenFiles = { onOpen(Overlay.Content(ContentSection.MODS)) },
+                onOpenMultiplayer = { onOpen(Overlay.Servers) },
+                onOpenDownloads = { onTab(Tab.DOWNLOADS) },
+                onOpenSettings = { onTab(Tab.SETTINGS) }
+            )
+
+            // 2. Sub-Navigation Tabs: Play | Installations | Skins | Patch Notes
+            SubNavigationTabs(
+                activeTab = -1, // -1 is Play
+                onTabSelected = { tabIndex ->
+                    when (tabIndex) {
+                        0 -> onTab(Tab.PROFILES)
+                        1 -> onOpen(Overlay.Skins)
+                        2 -> onOpen(Overlay.News(true))
+                        else -> {}
+                    }
+                }
+            )
+
+            // Centered Minecraft Java Edition Logo
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.img_mc_java_logo),
+                    contentDescription = "Minecraft Java Edition",
+                    modifier = Modifier
+                        .height(72.dp)
+                        .widthIn(max = 340.dp)
+                        .padding(horizontal = 24.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+
+            // 3. Floating Bottom Dock
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Background Download Bar if any download tasks are active
+                if (currentJob != null && currentJob.active) {
+                    CompactBackgroundDownloadBar(
+                        job = currentJob,
+                        onExpand = { onTab(Tab.DOWNLOADS) }
+                    )
+                } else if (isBusy) {
+                    LaunchBusyIndicator(state.label)
+                }
+
+                // Failure Alert Pill
+                ui.failure?.let { failure ->
+                    Text(
+                        text = "⚠ ${failure.title}  ·  Tap for Details",
+                        color = Color(0xFFFFA5A0),
+                        fontFamily = Monocraft,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xE01A2026))
+                            .border(BorderStroke(1.dp, Color(0xFF552222)), RoundedCornerShape(4.dp))
+                            .clickable { showFailure = true }
+                            .padding(8.dp)
+                    )
+                }
+
+                // Dock Row: Version Selector Pill & 3D Green PLAY Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left: 3D Version Chooser Pill
+                    Box(modifier = Modifier.weight(1.15f)) {
+                        VersionSelectorPill(
+                            selected = selected,
+                            profiles = ui.profiles.profiles,
+                            latestRelease = ui.manifest?.latestRelease,
+                            onSelectProfile = { vm.select(it) },
+                            onManageInstallations = { onTab(Tab.PROFILES) }
+                        )
+                    }
+
+                    // Right: Textured Minecraft Green PLAY Button
+                    CubiqMinecraftButton(
+                        onClick = {
+                            MinecraftUiClickSound.play(context)
+                            if (state == PlayState.NO_PROFILE) onTab(Tab.PROFILES) else vm.primaryAction()
+                        },
+                        style = if (state == PlayState.REPAIR_REQUIRED) MinecraftButtonStyle.RED else MinecraftButtonStyle.GREEN,
+                        enabled = !isBusy && !ui.launching && !ui.gameRunning,
+                        text = actionText,
+                        fontSize = 18.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * Top Account Header Bar:
+ * Displays Player Head with cyan/blue border, Username with dropdown arrow, and Quick Action Buttons.
+ */
+@Composable
+private fun TopAccountHeaderBar(
+    activeAccountName: String?,
+    activeAccountType: String?,
+    accounts: List<pro.cslauncher.core.account.Account>,
+    activeAccountId: String?,
+    onSelectAccount: (String) -> Unit,
+    onAddOffline: () -> Unit,
+    onAddMicrosoft: () -> Unit,
+    onAddElyby: () -> Unit,
+    onManageAccounts: () -> Unit,
+    onOpenFiles: () -> Unit,
+    onOpenMultiplayer: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF141416))
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left: Player Profile Pill (Clickable for interactive dropdown switcher)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable {
+                        MinecraftUiClickSound.play(context)
+                        expanded = true
+                    }
+                    .padding(end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Avatar with cyan/blue rounded border
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(BorderStroke(2.dp, Color(0xFF1E88E5)), RoundedCornerShape(6.dp))
+                        .background(Color(0xFF222222)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_mc_pc_profile),
+                        contentDescription = "Player Face",
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Column(verticalArrangement = Arrangement.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = activeAccountName ?: "Player",
+                            color = Color.White,
+                            fontFamily = Monocraft,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.ic_keyboard_arrow_down),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    Text(
+                        text = activeAccountType?.let { "(${it.lowercase().replaceFirstChar(Char::uppercase)})" } ?: "(Offline)",
+                        color = Color(0xFFAAAAAA),
+                        fontFamily = Monocraft,
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            // Right: Screen Rotation, FILES & MULTIPLAYER Action Buttons
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                // Screen Rotation Toggle
+                CubiqMinecraftButton(
+                    onClick = {
+                        MinecraftUiClickSound.play(context)
+                        val cur = activity?.resources?.configuration?.orientation
+                        if (cur == Configuration.ORIENTATION_PORTRAIT) {
+                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        } else {
+                            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        }
+                    },
+                    style = MinecraftButtonStyle.STONE,
+                    modifier = Modifier
+                        .height(34.dp)
+                        .width(38.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_screen_rotation),
+                        contentDescription = "Rotate",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                // FILES Button
+                CubiqMinecraftButton(
+                    onClick = {
+                        MinecraftUiClickSound.play(context)
+                        onOpenFiles()
+                    },
+                    style = MinecraftButtonStyle.STONE,
+                    text = "FILES",
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .height(34.dp)
+                        .widthIn(min = 60.dp)
+                )
+
+                // MULTIPLAYER Button
+                CubiqMinecraftButton(
+                    onClick = {
+                        MinecraftUiClickSound.play(context)
+                        onOpenMultiplayer()
+                    },
+                    style = MinecraftButtonStyle.GREEN,
+                    text = "MULTIPLAYER",
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .height(34.dp)
+                        .widthIn(min = 96.dp)
+                )
+            }
+        }
+
+        // Account Dropdown Menu
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .width(280.dp)
+                .background(Color(0xFF1E1E20))
+                .border(BorderStroke(1.5.dp, Color(0xFF383838)), RoundedCornerShape(4.dp))
+                .padding(6.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_person_outlined),
+                        contentDescription = null,
+                        tint = Color(0xFF55FF55),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text("ACCOUNTS", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(0xFF28282A))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text("${accounts.size} Saved", color = Color(0xFFAAAAAA), fontFamily = Monocraft, fontSize = 9.sp)
+                }
+            }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF2D2D30)))
+            Spacer(Modifier.height(4.dp))
+
+            accounts.forEach { acc ->
+                val active = acc.id == activeAccountId
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = acc.username,
+                                color = if (active) Color(0xFF55FF55) else Color.White,
+                                fontFamily = Monocraft,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "(${acc.type.name.lowercase().replaceFirstChar(Char::uppercase)})",
+                                color = Color(0xFFAAAAAA),
+                                fontFamily = Monocraft,
+                                fontSize = 9.sp
+                            )
+                            if (active) {
+                                Spacer(Modifier.width(6.dp))
+                                Text("✓", color = Color(0xFF55FF55), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                        }
+                    },
+                    onClick = {
+                        onSelectAccount(acc.id)
+                        expanded = false
+                    }
+                )
+            }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF2D2D30)))
+            DropdownMenuItem(
+                text = { Text("+ Add Offline Account", color = Color(0xFF55FF55), fontFamily = Monocraft, fontSize = 11.sp) },
+                onClick = { expanded = false; onAddOffline() }
+            )
+            DropdownMenuItem(
+                text = { Text("+ Add Microsoft Account", color = Color(0xFF8FD3FF), fontFamily = Monocraft, fontSize = 11.sp) },
+                onClick = { expanded = false; onAddMicrosoft() }
+            )
+            DropdownMenuItem(
+                text = { Text("+ Add Ely.by Account", color = Color(0xFFFFD477), fontFamily = Monocraft, fontSize = 11.sp) },
+                onClick = { expanded = false; onAddElyby() }
+            )
+            DropdownMenuItem(
+                text = { Text("Manage Accounts", color = Color.White, fontFamily = Monocraft, fontSize = 11.sp) },
+                onClick = { expanded = false; onManageAccounts() }
+            )
+        }
+    }
+}
+
+/**
+ * Sub-Navigation Tabs: Play | Installations | Skins | Patch Notes
+ */
+@Composable
+private fun SubNavigationTabs(
+    activeTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    val tabs = listOf(
+        Pair("Play", -1),
+        Pair("Installations", 0),
+        Pair("Skins", 1),
+        Pair("Patch Notes", 2)
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF141416))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tabs.forEach { (title, tabIndex) ->
+            val isSelected = activeTab == tabIndex
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .clickable { onTabSelected(tabIndex) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = title,
+                    color = if (isSelected) Color.White else Color(0xFF9E9E9E),
+                    fontFamily = Monocraft,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                if (isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color(0xFF38D122))
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(2.5.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 3D Beveled Version Selector Pill with block crafting table icon
+ */
+@Composable
+private fun VersionSelectorPill(
+    selected: Profile?,
+    profiles: List<Profile>,
+    latestRelease: String?,
+    onSelectProfile: (String) -> Unit,
+    onManageInstallations: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val activeVer = selected?.versionId ?: latestRelease ?: "Default"
+    val verTitle = if (selected == null) "Latest Release" else "Selected Version"
+
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF16181B))
+                .border(BorderStroke(1.5.dp, Color(0xFF32353A)), RoundedCornerShape(6.dp))
+                .clickable { expanded = true }
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.block_crafting_table),
+                contentDescription = "Version",
+                modifier = Modifier.size(26.dp)
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = verTitle,
+                    color = Color(0xFFAAAAAA),
+                    fontFamily = Monocraft,
+                    fontSize = 9.sp
+                )
+                Text(
+                    text = selected?.let { "${it.name} ($activeVer)" } ?: "Minecraft $activeVer",
+                    color = Color.White,
+                    fontFamily = Monocraft,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_drop_down_rounded),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .width(280.dp)
+                .background(Color(0xFF1C1C1E))
+                .border(BorderStroke(1.5.dp, Color(0xFF383838)), RoundedCornerShape(3.dp))
+        ) {
+            if (profiles.isEmpty()) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = "Latest Release ($latestRelease)",
+                            color = Color.White,
+                            fontFamily = Monocraft,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    onClick = { expanded = false; onManageInstallations() }
+                )
+            } else {
+                profiles.forEach { prof ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(prof.name, color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("Minecraft ${prof.versionId}", fontSize = 10.sp, color = Color(0xFFAAAAAA), fontFamily = Monocraft)
+                            }
+                        },
+                        onClick = {
+                            onSelectProfile(prof.id)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = "+ Manage Installations",
+                        color = Color(0xFF55FF55),
+                        fontFamily = Monocraft,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onManageInstallations()
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Compact Background Download Bar docked above bottom controls
+ */
+@Composable
+private fun CompactBackgroundDownloadBar(
+    job: InstallJob,
+    onExpand: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "compact_dl")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "compact_alpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF1E1E20))
+            .border(BorderStroke(1.dp, Color(0xFF383838)), RoundedCornerShape(6.dp))
+            .clickable(onClick = onExpand)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_download),
+                contentDescription = null,
+                tint = Color(0xFF55FF55).copy(alpha = alpha),
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "DOWNLOADING • ${job.stage.uppercase()}",
+                        color = Color.White,
+                        fontFamily = Monocraft,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    job.fraction?.let {
+                        Text(
+                            text = "${(it * 100).toInt()}%",
+                            color = Color(0xFF55FF55),
+                            fontFamily = Monocraft,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                AppProgress(job.fraction)
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = "${job.finishedFiles}/${job.totalFiles} files · ${formatBytes(job.bytes)}",
+                    color = Color(0xFFAAAAAA),
+                    fontSize = 9.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Launch Busy Indicator with rotating 3D block and pulsating green progress bar
+ */
 @Composable
 private fun LaunchBusyIndicator(label: String) {
     val reduce = LocalReduceMotion.current
-    val angle = if (reduce) 0f else {
-        val transition = rememberInfiniteTransition(label = "launch")
-        transition.animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "block-rotation").value
+    val infiniteTransition = rememberInfiniteTransition(label = "mc_loading")
+    val rotation by if (reduce) remember { mutableFloatStateOf(0f) } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2400, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "block_rotation"
+        )
     }
-    Row(Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xD916181B)).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        PixelIcon("grass", Modifier.rotate(angle), size = 20.dp)
-        Spacer(Modifier.width(8.dp))
-        Text(label, color = Color.White, fontFamily = Monocraft, fontSize = 10.sp)
+    val pulseAlpha by if (reduce) remember { mutableFloatStateOf(1f) } else {
+        infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "bar_pulse"
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xD916181B))
+            .border(BorderStroke(1.dp, Color(0xFF32353A)), RoundedCornerShape(6.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .graphicsLayer { rotationZ = rotation },
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(R.drawable.img_minecraft),
+                contentDescription = "Loading Block",
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label.uppercase(),
+                color = Color.White,
+                fontFamily = Monocraft,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+            )
+            Spacer(Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF222224))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(pulseAlpha)
+                        .background(Color(0xFF55FF55))
+                )
+            }
+        }
     }
 }
 
@@ -195,148 +1020,6 @@ fun OfficialNewsScreen(patchNotes: Boolean, onBack: () -> Unit) {
         }
     }
     selected?.let { note -> NoteDialog(note, { selected = null }, { openOfficialArticle(context, note) }) }
-}
-
-@Composable
-private fun AccountButton(name: String, offline: Boolean, onClick: () -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xD91A2026)).clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        PixelIcon("head", size = 24.dp)
-        Spacer(Modifier.width(7.dp))
-        Column(Modifier.widthIn(max = 120.dp)) {
-            Text(name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (offline) Text("OFFLINE", color = Color(0xFFFFD477), fontSize = 8.sp, lineHeight = 9.sp)
-        }
-        Spacer(Modifier.width(6.dp))
-        Text("⌄", color = Color.White, fontSize = 18.sp)
-    }
-}
-
-@Composable
-private fun IconSquare(icon: String, description: String, onClick: () -> Unit) {
-    Box(Modifier.size(38.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xD91A2026)).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        PixelIcon(icon, size = 22.dp, tint = Color.White, contentDescription = description)
-    }
-}
-
-@Composable
-private fun ProfileChooser(selected: Profile?, profiles: List<Profile>, latestRelease: String?, expanded: Boolean, setExpanded: (Boolean) -> Unit, vm: LauncherViewModel, onTab: (Tab) -> Unit) {
-    val version = selected?.versionId
-    Box {
-        Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xE9161B21))
-            .clickable { if (profiles.isEmpty()) onTab(Tab.PROFILES) else setExpanded(true) }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            PixelIcon("grass", size = 26.dp)
-            Spacer(Modifier.width(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (version != null && version == latestRelease) "Latest Release ($version)" else version?.let { "Minecraft $it" } ?: "Choose a Minecraft version",
-                    color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(selected?.let { "${it.name} · ${profileSubtitle(it)}" } ?: "Create an installation to get started",
-                    color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Text("⌄", color = Color.White, fontSize = 20.sp)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { setExpanded(false) }) {
-            profiles.forEach { profile ->
-                DropdownMenuItem(text = { Column {
-                    Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Minecraft ${profile.versionId}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } }, onClick = { vm.select(profile.id); setExpanded(false) })
-            }
-            DropdownMenuItem(text = { Text("Manage installations") }, onClick = { setExpanded(false); onTab(Tab.PROFILES) })
-        }
-    }
-}
-
-@Composable
-private fun PlayAction(text: String, canPlay: Boolean, enabled: Boolean, state: PlayState, onClick: () -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
-    CubiqMinecraftButton(onClick = onClick, modifier = modifier, enabled = enabled,
-        style = if (state == PlayState.REPAIR_REQUIRED) MinecraftButtonStyle.RED else MinecraftButtonStyle.GREEN,
-        text = text, fontSize = 18.sp)
-}
-
-@Composable
-private fun QuickActions(onTab: (Tab) -> Unit, onOpen: (Overlay) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickAction("grass", "Installations", { onTab(Tab.PROFILES) }, Modifier.weight(1f))
-        QuickAction("pickaxe", "Browse Mods", { onTab(Tab.BROWSE) }, Modifier.weight(1f))
-        Box(Modifier.weight(1f)) {
-            QuickAction("more", "More Options", { expanded = true }, Modifier.fillMaxWidth())
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                DropdownMenuItem(text = { Text("Mods") }, onClick = { expanded = false; onOpen(Overlay.Content(ContentSection.MODS)) })
-                DropdownMenuItem(text = { Text("Resource packs") }, onClick = { expanded = false; onOpen(Overlay.Content(ContentSection.RESOURCE_PACKS)) })
-                DropdownMenuItem(text = { Text("Worlds") }, onClick = { expanded = false; onOpen(Overlay.Content(ContentSection.WORLDS)) })
-                DropdownMenuItem(text = { Text("Settings") }, onClick = { expanded = false; onTab(Tab.SETTINGS) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickAction(icon: String, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.heightIn(min = 43.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xDD171D24)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        PixelIcon(icon, size = 18.dp, tint = Color.White.copy(alpha = 0.94f))
-        Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun BottomStatus(profile: Profile?, state: PlayState, recommendedRam: Int, configuredRam: Int, onOpen: (Overlay) -> Unit, onTab: (Tab) -> Unit) {
-    val canPlay = state == PlayState.READY
-    val gameDir = profile?.let { runCatching { it.gameDir(Services.dirs).toString() }.getOrNull() } ?: "Game directory not set"
-    Row(Modifier.fillMaxWidth().heightIn(min = 45.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1.15f).clip(RoundedCornerShape(8.dp)).background(Color(0xE91A2026)).padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(if (canPlay) Color(0xFF00E881) else Color(0xFFFFC451)))
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (canPlay) "Ready to play" else if (profile == null) "No installation selected" else state.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(profile?.let { "Minecraft ${it.versionId} · ${profileSubtitle(it)}" } ?: "Choose a version to get started", color = Color.White.copy(alpha = 0.67f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Row(Modifier.weight(1.25f).clip(RoundedCornerShape(8.dp)).background(Color(0xE91A2026)).clickable { if (profile != null) onOpen(Overlay.EditProfile(profile.id)) else onTab(Tab.PROFILES) }.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            PixelIcon("folder", size = 20.dp, tint = Color.White)
-            Spacer(Modifier.width(7.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Game Directory", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                Text(gameDir, color = Color.White.copy(alpha = 0.68f), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Text("›", color = Color.White, fontSize = 24.sp, lineHeight = 18.sp)
-        }
-        Row(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xE91A2026)).clickable { onTab(Tab.SETTINGS) }.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-            PixelIcon("info", size = 20.dp, tint = Color.White)
-            Spacer(Modifier.width(6.dp))
-            Column {
-                Text("RAM ALLOCATION", color = Color.White, fontSize = 8.sp)
-                Text("${if (configuredRam > 0) configuredRam else recommendedRam} MB", color = Color.White.copy(alpha = 0.8f), fontSize = 9.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun InstallProgress(fraction: Float?, label: String) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(7.dp)).background(Color(0xB9000000)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-        Text(label, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(4.dp))
-        AppProgress(fraction)
-    }
-}
-
-@Composable
-private fun NewsSection(notes: List<OfficialPatchNote>, loading: Boolean, error: Boolean, refresh: () -> Unit, onSelect: (OfficialPatchNote) -> Unit) {
-    val context = LocalContext.current
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Latest News", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        TextButton(onClick = { openMinecraftNews(context) }) { Text("View all  →", color = Color.White, fontSize = 10.sp) }
-    }
-    when {
-        loading && notes.isEmpty() -> LinearProgressIndicator(Modifier.fillMaxWidth(), color = launcherGreen)
-        notes.isEmpty() -> NewsEmpty(error, refresh)
-        else -> notes.take(5).forEach { NewsCard(it, { onSelect(it) }) }
-    }
 }
 
 @Composable
