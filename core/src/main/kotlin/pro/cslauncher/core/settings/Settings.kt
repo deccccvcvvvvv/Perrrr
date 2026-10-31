@@ -10,7 +10,7 @@ import java.nio.file.Path
 @Serializable enum class ThemeChoice { MINECRAFT_LAUNCHER, PIXEL, DARK_GRAPHITE, GLASSMORPHISM }
 @Serializable enum class PerformancePreset { BATTERY_SAVER, BALANCED, PERFORMANCE, CUSTOM }
 @Serializable enum class CursorMode { DESKTOP, TOUCHPAD, IMMERSIVE, SMART }
-@Serializable enum class CursorShape { ARROW, CIRCLE, CROSSHAIR, DOT }
+@Serializable enum class CursorShape { ARROW, CIRCLE, CROSSHAIR, DOT, HAND, IBEAM, RESIZE_NS, RESIZE_EW, RESIZE_ALL, NOT_ALLOWED }
 @Serializable enum class AudioSourceChoice { NONE, MICROPHONE, GAME_AUDIO, GAME_AND_MICROPHONE }
 @Serializable enum class RecordingQuality { LOW, BALANCED, HIGH, CUSTOM }
 @Serializable enum class RecordingResolution { P480, P720, P1080, NATIVE }

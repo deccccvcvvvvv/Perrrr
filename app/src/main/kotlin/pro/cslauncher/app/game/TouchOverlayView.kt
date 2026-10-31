@@ -145,6 +145,50 @@ class TouchOverlayView(ctx: Context, val engine: TouchEngine, private val cursor
             CursorShape.CIRCLE -> { c.drawCircle(x, y, size / 2, fill.apply { alpha = (alpha * 0.45f).toInt() }); stroke.color = s.colorArgb.toInt(); c.drawCircle(x, y, size / 2, stroke) }
             CursorShape.CROSSHAIR -> { stroke.color = s.colorArgb.toInt(); c.drawLine(x - size / 2, y, x + size / 2, y, stroke); c.drawLine(x, y - size / 2, x, y + size / 2, stroke) }
             CursorShape.DOT -> c.drawCircle(x, y, size * 0.18f, fill)
+            CursorShape.HAND -> {
+                // Dynamic Hand Cursor
+                val p = Path().apply {
+                    moveTo(x, y + size * 0.2f)
+                    lineTo(x + size * 0.3f, y)
+                    lineTo(x + size * 0.5f, y + size * 0.3f)
+                    lineTo(x + size * 0.7f, y + size * 0.5f)
+                    lineTo(x + size * 0.6f, y + size * 0.9f)
+                    lineTo(x + size * 0.1f, y + size * 0.7f)
+                    close()
+                }
+                c.drawPath(p, fill); stroke.color = 0xFF0B0B0E.toInt(); stroke.alpha = 200; c.drawPath(p, stroke)
+            }
+            CursorShape.IBEAM -> {
+                stroke.color = s.colorArgb.toInt()
+                c.drawLine(x - size * 0.25f, y - size / 2, x + size * 0.25f, y - size / 2, stroke)
+                c.drawLine(x, y - size / 2, x, y + size / 2, stroke)
+                c.drawLine(x - size * 0.25f, y + size / 2, x + size * 0.25f, y + size / 2, stroke)
+            }
+            CursorShape.RESIZE_NS -> {
+                stroke.color = s.colorArgb.toInt()
+                c.drawLine(x, y - size / 2, x, y + size / 2, stroke)
+                val pTop = Path().apply { moveTo(x, y - size / 2); lineTo(x - size * 0.2f, y - size * 0.25f); lineTo(x + size * 0.2f, y - size * 0.25f); close() }
+                val pBottom = Path().apply { moveTo(x, y + size / 2); lineTo(x - size * 0.2f, y + size * 0.25f); lineTo(x + size * 0.2f, y + size * 0.25f); close() }
+                c.drawPath(pTop, fill); c.drawPath(pBottom, fill)
+            }
+            CursorShape.RESIZE_EW -> {
+                stroke.color = s.colorArgb.toInt()
+                c.drawLine(x - size / 2, y, x + size / 2, y, stroke)
+                val pLeft = Path().apply { moveTo(x - size / 2, y); lineTo(x - size * 0.25f, y - size * 0.2f); lineTo(x - size * 0.25f, y + size * 0.2f); close() }
+                val pRight = Path().apply { moveTo(x + size / 2, y); lineTo(x + size * 0.25f, y - size * 0.2f); lineTo(x + size * 0.25f, y + size * 0.2f); close() }
+                c.drawPath(pLeft, fill); c.drawPath(pRight, fill)
+            }
+            CursorShape.RESIZE_ALL -> {
+                stroke.color = s.colorArgb.toInt()
+                c.drawLine(x - size / 2, y, x + size / 2, y, stroke)
+                c.drawLine(x, y - size / 2, x, y + size / 2, stroke)
+                c.drawCircle(x, y, size * 0.12f, fill)
+            }
+            CursorShape.NOT_ALLOWED -> {
+                stroke.color = 0xFFE5484D.toInt()
+                c.drawCircle(x, y, size / 2, stroke)
+                c.drawLine(x - size * 0.35f, y - size * 0.35f, x + size * 0.35f, y + size * 0.35f, stroke)
+            }
         }
         if (s.clickAnimation) cursor.clickAnimation(SystemClock.uptimeMillis())?.let { p ->
             stroke.color = s.colorArgb.toInt(); stroke.alpha = ((1 - p) * 200).toInt(); c.drawCircle(x, y, size * (0.3f + p * 0.7f), stroke)

@@ -150,13 +150,26 @@ fun SettingsScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
                     ChoiceRow("Mode", CursorMode.entries, c.mode, label = { it.name.lowercase().replaceFirstChar(Char::uppercase) }) { v -> up { it.copy(mode = v) } }
                     Text(when (c.mode) { CursorMode.DESKTOP -> "The pointer jumps to your finger in menus."; CursorMode.TOUCHPAD -> "Drag anywhere to move the pointer like a laptop touchpad; tap to click."
                         CursorMode.IMMERSIVE -> "No visible pointer; touches act directly."; CursorMode.SMART -> "Camera control in game, visible pointer in menus and inventories." }, color = p.textMuted, fontSize = 11.sp)
-                    ChoiceRow("Shape", CursorShape.entries, c.shape, label = { it.name.lowercase().replaceFirstChar(Char::uppercase) }) { v -> up { it.copy(shape = v) } }
-                    SliderRow("Size", c.sizeDp, 12f..48f, format = { "${it.toInt()} dp" }) { v -> up { it.copy(sizeDp = v) } }
+                    ChoiceRow("Shape", CursorShape.entries, c.shape, label = {
+                        when (it) {
+                            CursorShape.ARROW -> "Arrow"
+                            CursorShape.CIRCLE -> "Circle"
+                            CursorShape.CROSSHAIR -> "Crosshair"
+                            CursorShape.DOT -> "Dot"
+                            CursorShape.HAND -> "Hand (Link)"
+                            CursorShape.IBEAM -> "I-Beam (Text)"
+                            CursorShape.RESIZE_NS -> "Resize Vertical"
+                            CursorShape.RESIZE_EW -> "Resize Horizontal"
+                            CursorShape.RESIZE_ALL -> "Move / Resize All"
+                            CursorShape.NOT_ALLOWED -> "Not Allowed"
+                        }
+                    }) { v -> up { it.copy(shape = v) } }
+                    SliderRow("Size", c.sizeDp, 12f..56f, format = { "${it.toInt()} dp" }) { v -> up { it.copy(sizeDp = v) } }
                     SliderRow("Opacity", c.opacity, 0.3f..1f, format = { "${(it * 100).toInt()}%" }) { v -> up { it.copy(opacity = v) } }
                     SliderRow("Sensitivity", c.sensitivity, 0.3f..3f, format = { "%.1f×".format(it) }) { v -> up { it.copy(sensitivity = v) } }
                     SliderRow("Smoothing", c.smoothing, 0f..0.8f, format = { "%.0f%%".format(it * 100) }) { v -> up { it.copy(smoothing = v) } }
-                    SwitchRow("Click animation", null, c.clickAnimation) { v -> up { it.copy(clickAnimation = v) } }
-                    SwitchRow("Pointer trail", null, c.trail) { v -> up { it.copy(trail = v) } }
+                    SwitchRow("Click animation", "Show animated ripple on tap/click", c.clickAnimation) { v -> up { it.copy(clickAnimation = v) } }
+                    SwitchRow("Pointer trail", "Smooth motion tail behind the cursor", c.trail) { v -> up { it.copy(trail = v) } }
                     SwitchRow("Use external mouse when connected", null, c.externalMouse) { v -> up { it.copy(externalMouse = v) } }
                 }
                 Category.RECORDING -> RecordingSettingsSection(vm, s.recording)

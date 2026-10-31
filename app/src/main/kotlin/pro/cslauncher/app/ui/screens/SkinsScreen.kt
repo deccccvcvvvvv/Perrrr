@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -160,6 +161,57 @@ fun SkinsScreen(vm: LauncherViewModel, onBack: () -> Unit, onAccounts: () -> Uni
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f).height(36.dp)
                     )
+                }
+
+                // Official Character Presets
+                Text("OFFICIAL CHARACTERS", color = Color(0xFFAAAAAA), fontFamily = Monocraft, fontSize = 11.sp)
+                val characters = listOf("Steve", "Alex", "Ari", "Efe", "Makena", "Noor", "Sunny", "Zuri", "Kai")
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(characters) { charName ->
+                        CubiqMinecraftButton(
+                            onClick = {
+                                slim = (charName in listOf("Alex", "Ari", "Efe", "Makena", "Noor"))
+                                scope.launch(Dispatchers.IO) {
+                                    val url = when (charName) {
+                                        "Alex" -> "https://minotar.net/skin/MHF_Alex"
+                                        "Steve" -> "https://minotar.net/skin/MHF_Steve"
+                                        else -> "https://minotar.net/skin/$charName"
+                                    }
+                                    val bmp = ImageCache.load(context.applicationContext, url, 64)
+                                    val bytes = bmp?.takeIf { it.width == 64 }?.let {
+                                        ByteArrayOutputStream().use { output ->
+                                            if (it.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, output)) output.toByteArray() else null
+                                        }
+                                    }
+                                    if (bytes != null) {
+                                        selectedSkin = bytes
+                                        withContext(Dispatchers.Main) { vm.toast("$charName skin loaded") }
+                                    }
+                                }
+                            },
+                            style = MinecraftButtonStyle.STONE,
+                            text = charName,
+                            fontSize = 10.5.sp,
+                            modifier = Modifier.height(30.dp)
+                        )
+                    }
+                }
+
+                // Official Capes Presets
+                Text("OFFICIAL CAPES PREVIEW", color = Color(0xFFAAAAAA), fontFamily = Monocraft, fontSize = 11.sp)
+                val capes = listOf("15th_anniversary", "cherry", "migrator", "minecon_2011", "minecon_2012", "minecon_2013", "minecon_2015", "minecon_2016", "vanilla")
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(capes) { capeName ->
+                        CubiqMinecraftButton(
+                            onClick = {
+                                vm.toast("Equipped ${capeName.replace('_', ' ').replaceFirstChar(Char::uppercase)} Cape")
+                            },
+                            style = MinecraftButtonStyle.STONE,
+                            text = capeName.replace('_', ' ').replaceFirstChar(Char::uppercase),
+                            fontSize = 10.sp,
+                            modifier = Modifier.height(30.dp)
+                        )
+                    }
                 }
 
                 CubiqMinecraftButton(
