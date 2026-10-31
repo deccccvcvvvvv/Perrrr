@@ -233,7 +233,7 @@ fun MinecraftLauncherHome(
                         val name = elyName.trim()
                         val pass = elyPassword
                         if (name.isNotEmpty() && pass.isNotEmpty()) {
-                            vm.addElyBy(name, pass, elyOtp.trim())
+                            vm.addEly(name, pass, elyOtp.trim())
                             showAddElybyDialog = false
                             elyName = ""
                             elyPassword = ""

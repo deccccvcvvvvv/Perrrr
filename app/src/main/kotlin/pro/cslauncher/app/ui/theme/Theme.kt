@@ -119,6 +119,7 @@ fun CsBackground(modifier: Modifier = Modifier, animated: Boolean = true, conten
                 drawCircle(Brush.radialGradient(listOf(Color(0x332F3A52), Color.Transparent), center = Offset(size.width * 0.15f, size.height * 0.12f), radius = size.width * 0.7f),
                     radius = size.width * 0.7f, center = Offset(size.width * 0.15f, size.height * 0.12f))
                 drawCircle(Brush.radialGradient(listOf(Color(0x2240465A), Color.Transparent), center = Offset(size.width * 0.9f, size.height * 0.65f), radius = size.width * 0.6f),
+                    radius = size.width * 0.6f, center = Offset(size.width * 0.9f, size.height * 0.65f))
             }
         }
         if (animated && !LocalReduceMotion.current) {
