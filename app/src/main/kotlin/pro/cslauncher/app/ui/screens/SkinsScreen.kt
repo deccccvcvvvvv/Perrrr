@@ -109,45 +109,206 @@ fun SkinsScreen(vm: LauncherViewModel, onBack: () -> Unit, onAccounts: () -> Uni
             }) { Text(if (uploading) "Uploading…" else "Upload") } },
             dismissButton = { TextButton(enabled = !uploading, onClick = { confirmUpload = false }) { Text("Cancel") } })
     }
+    val screenWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val isCompact = screenWidth < 600
+
     Column(Modifier.fillMaxSize().background(Color(0xFF141416))) {
         ScreenHeader("Skins", onBack) { HeaderAction("Accounts", "head", onAccounts) }
-        Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1A1A1C), RoundedCornerShape(4.dp))
-                .border(1.dp, Color(0xFF353538), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
-                val image = selectedSkin ?: currentSkin
-                if (image != null) SkinPreview3D(image, slim, reduceMotion, Modifier.fillMaxSize())
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    PixelIcon("head", size = 60.dp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(if (loading) "Loading skin…" else "No skin preview available", color = Color(0xFFAAAAAA), fontSize = 11.sp)
+        
+        if (isCompact) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .background(Color(0xFF1A1A1C), RoundedCornerShape(4.dp))
+                        .border(1.dp, Color(0xFF353538), RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val image = selectedSkin ?: currentSkin
+                    if (image != null) SkinPreview3D(image, slim, reduceMotion, Modifier.fillMaxSize())
+                    else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        PixelIcon("head", size = 50.dp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(if (loading) "Loading skin…" else "No skin preview available", color = Color(0xFFAAAAAA), fontSize = 11.sp)
+                    }
                 }
-            }
-            Column(Modifier.weight(1.2f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("YOUR SKIN", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+
+                Text("YOUR SKIN", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(account?.username ?: "No account selected", color = Color.White, fontFamily = Monocraft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(if (selectedSkin != null) "Selected image · preview only until uploaded" else "Drag to rotate the 3D preview", color = Color(0xFFB3B3B5), fontSize = 11.sp)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("MODEL", color = Color(0xFFAAAAAA), fontSize = 10.sp)
-                    PixelButton("Classic", { slim = false }, style = if (!slim) PxStyle.SELECTED else PxStyle.NORMAL, height = 32.dp, fontSize = 10.sp)
-                    PixelButton("Slim", { slim = true }, style = if (slim) PxStyle.SELECTED else PxStyle.NORMAL, height = 32.dp, fontSize = 10.sp)
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("MODEL", color = Color(0xFFAAAAAA), fontSize = 11.sp)
+                    CubiqMinecraftButton(
+                        onClick = { slim = false },
+                        style = if (!slim) MinecraftButtonStyle.GREEN else MinecraftButtonStyle.STONE,
+                        text = "Classic (4px)",
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    )
+                    CubiqMinecraftButton(
+                        onClick = { slim = true },
+                        style = if (slim) MinecraftButtonStyle.GREEN else MinecraftButtonStyle.STONE,
+                        text = "Slim (3px)",
+                        fontSize = 11.sp,
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    )
                 }
-                PixelButton("Select skin PNG", { picker.launch(arrayOf("image/png")) }, Modifier.fillMaxWidth(), enabled = !loading && !uploading, icon = "upload", height = 36.dp, fontSize = 11.sp)
-                if (selectedSkin != null) PixelButton("Use account preview", { selectedSkin = null }, Modifier.fillMaxWidth(), enabled = !uploading, height = 32.dp, fontSize = 10.sp)
+
+                CubiqMinecraftButton(
+                    onClick = { picker.launch(arrayOf("image/png")) },
+                    style = MinecraftButtonStyle.GREEN,
+                    text = "Select Skin PNG",
+                    fontSize = 12.sp,
+                    enabled = !loading && !uploading,
+                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                )
+
+                if (selectedSkin != null) {
+                    CubiqMinecraftButton(
+                        onClick = { selectedSkin = null },
+                        style = MinecraftButtonStyle.STONE,
+                        text = "Reset To Account Skin",
+                        fontSize = 11.sp,
+                        enabled = !uploading,
+                        modifier = Modifier.fillMaxWidth().height(36.dp)
+                    )
+                }
+
                 if (account?.type == AccountType.MICROSOFT) {
-                    PixelButton("Upload to Minecraft.net", { confirmUpload = true }, Modifier.fillMaxWidth(), style = PxStyle.PRIMARY, enabled = selectedSkin != null && !uploading, height = 36.dp, fontSize = 11.sp)
-                    PixelButton("Open Minecraft.net", {
-                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin"))) }
-                            .onFailure { vm.toast("Could not open the browser") }
-                    }, Modifier.fillMaxWidth(), height = 32.dp, fontSize = 10.sp)
+                    CubiqMinecraftButton(
+                        onClick = { confirmUpload = true },
+                        style = MinecraftButtonStyle.GREEN,
+                        text = "Upload to Minecraft.net",
+                        fontSize = 12.sp,
+                        enabled = selectedSkin != null && !uploading,
+                        modifier = Modifier.fillMaxWidth().height(40.dp)
+                    )
+                    CubiqMinecraftButton(
+                        onClick = {
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin"))) }
+                                .onFailure { vm.toast("Could not open the browser") }
+                        },
+                        style = MinecraftButtonStyle.STONE,
+                        text = "Open Minecraft.net",
+                        fontSize = 11.sp,
+                        modifier = Modifier.fillMaxWidth().height(36.dp)
+                    )
                 } else {
-                    Text(when (account?.type) {
-                        AccountType.ELY_BY -> "Ely.by skin changes must be made with your account provider."
-                        AccountType.OFFLINE -> "Offline skin selection is a preview only; the current launcher core does not inject it into the game."
-                        else -> "Sign in with Microsoft to upload a skin."
-                    }, color = Color(0xFFAAAAAA), fontSize = 10.sp, lineHeight = 14.sp)
-                    PixelButton("Manage accounts", onAccounts, Modifier.fillMaxWidth(), icon = "head", height = 32.dp, fontSize = 10.sp)
+                    Text(
+                        text = when (account?.type) {
+                            AccountType.ELY_BY -> "Ely.by skin changes must be made with your account provider."
+                            AccountType.OFFLINE -> "Offline skin selection is a preview only; the current launcher core does not inject it into the game."
+                            else -> "Sign in with Microsoft to upload a skin."
+                        },
+                        color = Color(0xFFAAAAAA),
+                        fontSize = 10.5.sp,
+                        lineHeight = 14.sp
+                    )
+                    CubiqMinecraftButton(
+                        onClick = onAccounts,
+                        style = MinecraftButtonStyle.STONE,
+                        text = "Manage Accounts",
+                        fontSize = 11.sp,
+                        modifier = Modifier.fillMaxWidth().height(36.dp)
+                    )
                 }
                 Text("Accepted PNG: 64×64 or 64×32 pixels, up to 2 MB.", color = Color(0xFF88888C), fontSize = 10.sp, lineHeight = 14.sp)
+                Spacer(Modifier.height(10.dp))
+            }
+        } else {
+            Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xFF1A1A1C), RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0xFF353538), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+                    val image = selectedSkin ?: currentSkin
+                    if (image != null) SkinPreview3D(image, slim, reduceMotion, Modifier.fillMaxSize())
+                    else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        PixelIcon("head", size = 60.dp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(if (loading) "Loading skin…" else "No skin preview available", color = Color(0xFFAAAAAA), fontSize = 11.sp)
+                    }
+                }
+                Column(Modifier.weight(1.2f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("YOUR SKIN", color = Color.White, fontFamily = Monocraft, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(account?.username ?: "No account selected", color = Color.White, fontFamily = Monocraft, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (selectedSkin != null) "Selected image · preview only until uploaded" else "Drag to rotate the 3D preview", color = Color(0xFFB3B3B5), fontSize = 11.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("MODEL", color = Color(0xFFAAAAAA), fontSize = 10.sp)
+                        CubiqMinecraftButton(
+                            onClick = { slim = false },
+                            style = if (!slim) MinecraftButtonStyle.GREEN else MinecraftButtonStyle.STONE,
+                            text = "Classic (4px)",
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f).height(34.dp)
+                        )
+                        CubiqMinecraftButton(
+                            onClick = { slim = true },
+                            style = if (slim) MinecraftButtonStyle.GREEN else MinecraftButtonStyle.STONE,
+                            text = "Slim (3px)",
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f).height(34.dp)
+                        )
+                    }
+                    CubiqMinecraftButton(
+                        onClick = { picker.launch(arrayOf("image/png")) },
+                        style = MinecraftButtonStyle.GREEN,
+                        text = "Select Skin PNG",
+                        fontSize = 11.5.sp,
+                        enabled = !loading && !uploading,
+                        modifier = Modifier.fillMaxWidth().height(38.dp)
+                    )
+                    if (selectedSkin != null) {
+                        CubiqMinecraftButton(
+                            onClick = { selectedSkin = null },
+                            style = MinecraftButtonStyle.STONE,
+                            text = "Reset To Account Skin",
+                            fontSize = 10.5.sp,
+                            enabled = !uploading,
+                            modifier = Modifier.fillMaxWidth().height(34.dp)
+                        )
+                    }
+                    if (account?.type == AccountType.MICROSOFT) {
+                        CubiqMinecraftButton(
+                            onClick = { confirmUpload = true },
+                            style = MinecraftButtonStyle.GREEN,
+                            text = "Upload to Minecraft.net",
+                            fontSize = 11.5.sp,
+                            enabled = selectedSkin != null && !uploading,
+                            modifier = Modifier.fillMaxWidth().height(38.dp)
+                        )
+                        CubiqMinecraftButton(
+                            onClick = {
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.minecraft.net/en-us/msaprofile/mygames/editskin"))) }
+                                    .onFailure { vm.toast("Could not open the browser") }
+                            },
+                            style = MinecraftButtonStyle.STONE,
+                            text = "Open Minecraft.net",
+                            fontSize = 10.5.sp,
+                            modifier = Modifier.fillMaxWidth().height(34.dp)
+                        )
+                    } else {
+                        Text(when (account?.type) {
+                            AccountType.ELY_BY -> "Ely.by skin changes must be made with your account provider."
+                            AccountType.OFFLINE -> "Offline skin selection is a preview only; the current launcher core does not inject it into the game."
+                            else -> "Sign in with Microsoft to upload a skin."
+                        }, color = Color(0xFFAAAAAA), fontSize = 10.sp, lineHeight = 14.sp)
+                        CubiqMinecraftButton(
+                            onClick = onAccounts,
+                            style = MinecraftButtonStyle.STONE,
+                            text = "Manage Accounts",
+                            fontSize = 11.sp,
+                            modifier = Modifier.fillMaxWidth().height(34.dp)
+                        )
+                    }
+                    Text("Accepted PNG: 64×64 or 64×32 pixels, up to 2 MB.", color = Color(0xFF88888C), fontSize = 10.sp, lineHeight = 14.sp)
+                }
             }
         }
     }

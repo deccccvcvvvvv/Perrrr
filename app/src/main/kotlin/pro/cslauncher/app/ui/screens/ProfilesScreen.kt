@@ -60,47 +60,323 @@ fun ProfilesScreen(vm: LauncherViewModel, onEdit: (String) -> Unit, onOpen: (Ove
         }
     }
 
+    var filterReleases by remember { mutableStateOf(true) }
+    var filterSnapshots by remember { mutableStateOf(true) }
+    var filterModded by remember { mutableStateOf(true) }
+
     Column(Modifier.fillMaxSize()) {
         ScreenHeader("Installations") {
             HeaderAction("Modpack", "chest", { mrpackPicker.launch(arrayOf("*/*")) })
             HeaderAction("OptiFine", "bolt", { onOpen(Overlay.OptiFine(ui.selected?.id)) })
-            HeaderAction("Import profile JSON", "upload", { importing = true }, compact = true)
-            HeaderAction("New", "plus", { creating = true }, style = PxStyle.PRIMARY)
+            HeaderAction("Import JSON", "upload", { importing = true }, compact = true)
+            HeaderAction("New...", "plus", { creating = true }, style = PxStyle.PRIMARY)
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            PixelTextField(search, { search = it }, Modifier.weight(1f), placeholder = "Search installations...")
+
+        // Top Action Bar: + New... | + Modpack | Search Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            CubiqMinecraftButton(
+                onClick = { creating = true },
+                style = MinecraftButtonStyle.STONE,
+                text = "+ New...",
+                fontSize = 12.sp,
+                modifier = Modifier.height(36.dp)
+            )
+
+            CubiqMinecraftButton(
+                onClick = { mrpackPicker.launch(arrayOf("*/*")) },
+                style = MinecraftButtonStyle.STONE,
+                text = "+ Modpack",
+                fontSize = 12.sp,
+                modifier = Modifier.height(36.dp)
+            )
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                    .background(Color(0xFF1E1E20))
+                    .border(
+                        androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (search.isNotEmpty()) Color(0xFF55FF55) else Color(0xFF383838)
+                        ),
+                        androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+                    )
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = Color.White,
+                            fontFamily = Monocraft,
+                            fontSize = 12.sp
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF55FF55)),
+                        decorationBox = { innerTextField ->
+                            if (search.isEmpty()) {
+                                Text(
+                                    text = "Search installations...",
+                                    color = Color(0xFF777777),
+                                    fontFamily = Monocraft,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                    if (search.isNotEmpty()) {
+                        Text(
+                            text = "✕",
+                            color = Color(0xFF888888),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .clickable { search = "" }
+                                .padding(start = 6.dp)
+                        )
+                    }
+                }
+            }
         }
-        val filtered = ui.profiles.profiles.filter { it.name.contains(search, ignoreCase = true) || it.versionId.contains(search, ignoreCase = true) }
+
+        // Filters Row: Checkboxes for Releases, Snapshots, Modded
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "VERSIONS:",
+                color = Color(0xFF888888),
+                fontFamily = Monocraft,
+                fontSize = 11.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+            )
+            Spacer(Modifier.width(10.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { filterReleases = !filterReleases }) {
+                Checkbox(
+                    checked = filterReleases,
+                    onCheckedChange = { filterReleases = it },
+                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF3C8527), checkmarkColor = Color.White, uncheckedColor = Color(0xFF666666)),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Releases", color = if (filterReleases) Color.White else Color(0xFF888888), fontFamily = Monocraft, fontSize = 11.sp)
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { filterSnapshots = !filterSnapshots }) {
+                Checkbox(
+                    checked = filterSnapshots,
+                    onCheckedChange = { filterSnapshots = it },
+                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF3C8527), checkmarkColor = Color.White, uncheckedColor = Color(0xFF666666)),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Snapshots", color = if (filterSnapshots) Color.White else Color(0xFF888888), fontFamily = Monocraft, fontSize = 11.sp)
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { filterModded = !filterModded }) {
+                Checkbox(
+                    checked = filterModded,
+                    onCheckedChange = { filterModded = it },
+                    colors = CheckboxDefaults.colors(checkedColor = Color(0xFF3C8527), checkmarkColor = Color.White, uncheckedColor = Color(0xFF666666)),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Modded", color = if (filterModded) Color.White else Color(0xFF888888), fontFamily = Monocraft, fontSize = 11.sp)
+            }
+        }
+
+        val filtered = ui.profiles.profiles.filter { pr ->
+            val isModded = pr.loader != null || pr.isOptiFine
+            val isSnapshot = pr.versionId.contains("snapshot", ignoreCase = true) || pr.versionId.contains("w", ignoreCase = true) || pr.name.contains("snapshot", ignoreCase = true)
+            val isRelease = !isModded && !isSnapshot
+
+            val matchesFilter = (filterModded && isModded) ||
+                    (filterSnapshots && isSnapshot) ||
+                    (filterReleases && isRelease) ||
+                    (!filterModded && !filterSnapshots && !filterReleases)
+
+            val matchesSearch = search.isBlank() || pr.name.contains(search.trim(), ignoreCase = true) || pr.versionId.contains(search.trim(), ignoreCase = true)
+            matchesFilter && matchesSearch
+        }
+
         if (filtered.isEmpty()) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 PixelIcon("grass", size = 55.dp)
                 Spacer(Modifier.height(10.dp))
                 PixelTitle(if (ui.profiles.profiles.isEmpty()) "No installations yet" else "No installations found", fontSize = 15.sp)
-                if (ui.profiles.profiles.isEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    PixelButton("Create installation", { creating = true }, style = PxStyle.PRIMARY, icon = "plus")
-                }
+                Spacer(Modifier.height(10.dp))
+                CubiqMinecraftButton(
+                    onClick = { creating = true },
+                    style = MinecraftButtonStyle.GREEN,
+                    text = "Create installation",
+                    fontSize = 12.sp,
+                    modifier = Modifier.height(38.dp)
+                )
             }
-        } else LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp)) {
+        } else LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 14.dp)
+        ) {
             items(filtered, key = { it.id }) { pr ->
                 val sel = pr.id == ui.selected?.id
                 val installed = pr.effectiveVersionId in ui.installed && pr.installationState !in listOf("pending", "installing", "incomplete")
-                PixelPanel(Modifier.fillMaxWidth().clickable { vm.select(pr.id) }, selected = sel, padding = 7.dp) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                val isModded = pr.loader != null || pr.isOptiFine
+                val blockIconRes = when {
+                    isModded -> pro.cslauncher.app.R.drawable.img_diamond_block
+                    pr.versionId.contains("snapshot", ignoreCase = true) || pr.name.contains("snapshot", ignoreCase = true) -> pro.cslauncher.app.R.drawable.img_command_block
+                    else -> pro.cslauncher.app.R.drawable.img_old_grass_block
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                        .background(if (sel) Color(0xFF222428) else Color(0xFF1B1C1E))
+                        .border(
+                            androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (sel) Color(0xFF3C8527) else Color(0xFF2E3033)
+                            ),
+                            androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        )
+                        .clickable { vm.select(pr.id) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (pr.customIconId != null) {
                         ProfileIconImage(pr, 38.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(pr.name, color = p.text, fontFamily = Monocraft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                if (sel) { Spacer(Modifier.width(6.dp)); Badge("ACTIVE", p.success) }
+                    } else {
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(blockIconRes),
+                            contentDescription = pr.name,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = pr.name,
+                                color = Color.White,
+                                fontFamily = Monocraft,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (sel) {
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                                        .background(Color(0xFF1E3A1E))
+                                        .border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3C8527)), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "ACTIVE",
+                                        color = Color(0xFF55FF55),
+                                        fontFamily = Monocraft,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        maxLines = 1
+                                    )
+                                }
                             }
-                            Text(profileSubtitle(pr), color = p.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (pr.effectiveVersionId in ui.needsRepair) "Repair required" else if (installed) "Ready" else "Not installed", color = p.textMuted, fontSize = 9.sp)
                         }
-                        PixelButton(if (installed) "Play" else "Install", { vm.playProfile(pr.id) }, height = 34.dp, fontSize = 10.sp, style = PxStyle.PRIMARY, enabled = !ui.launching && !ui.gameRunning)
-                        Spacer(Modifier.width(5.dp))
-                        PixelIconButton("more", "Installation options", { menuFor = pr }, size = 34.dp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = profileSubtitle(pr),
+                            color = Color(0xFF888888),
+                            fontFamily = Monocraft,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Green 3D PLAY Button
+                    CubiqMinecraftButton(
+                        onClick = {
+                            vm.select(pr.id)
+                            vm.playProfile(pr.id)
+                        },
+                        style = MinecraftButtonStyle.GREEN,
+                        text = if (installed) "Play" else "Install",
+                        fontSize = 12.sp,
+                        enabled = !ui.launching && !ui.gameRunning,
+                        modifier = Modifier
+                            .width(68.dp)
+                            .height(34.dp)
+                    )
+
+                    Spacer(Modifier.width(6.dp))
+
+                    // Edit Button
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                            .background(Color(0xFF28282A))
+                            .border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3C3C3E)), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                            .clickable { onEdit(pr.id) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PixelIcon("edit", size = 16.dp)
+                    }
+
+                    Spacer(Modifier.width(4.dp))
+
+                    // Three Dots Options Button
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                            .background(Color(0xFF28282A))
+                            .border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3C3C3E)), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                            .clickable { menuFor = pr },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "...",
+                            color = Color.White,
+                            fontFamily = Monocraft,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }

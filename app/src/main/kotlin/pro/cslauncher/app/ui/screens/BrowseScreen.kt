@@ -105,13 +105,138 @@ fun BrowseScreen(vm: LauncherViewModel, onOpen: (Overlay) -> Unit) {
         }
     }
 
+    var showCategories by rememberSaveable { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 10.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("CONTENT & MODS HUB", color = Color.White, fontFamily = Monocraft, fontSize = 15.sp, maxLines = 1)
                 Text(profile?.let { "Active installation: ${it.name}" } ?: "Select an installation for compatible content", color = p.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            PixelButton("Installed", { onOpen(Overlay.Content(ContentSection.MODS)) }, enabled = profile != null, icon = "folder", height = 32.dp, fontSize = 10.sp)
+            CubiqMinecraftButton(
+                onClick = { showCategories = !showCategories },
+                style = if (showCategories) MinecraftButtonStyle.GREEN else MinecraftButtonStyle.STONE,
+                text = if (showCategories) "Browser" else "Categories",
+                fontSize = 10.5.sp,
+                modifier = Modifier.height(32.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            CubiqMinecraftButton(
+                onClick = { onOpen(Overlay.Content(ContentSection.MODS)) },
+                style = MinecraftButtonStyle.STONE,
+                enabled = profile != null,
+                text = "Installed",
+                fontSize = 10.5.sp,
+                modifier = Modifier.height(32.dp)
+            )
+        }
+
+        if (showCategories) {
+            // Cubiq 1:1 Content Categories Grid
+            val categories = listOf(
+                Triple("Modpacks", "Browse & install CurseForge & Modrinth modpacks", pro.cslauncher.app.R.drawable.ic_package_2_outlined) to {
+                    kind = ProjectKind.MODPACK
+                    showCategories = false
+                },
+                Triple("Mods", "Search, download and auto-install Fabric mods", pro.cslauncher.app.R.drawable.ic_extension_outlined) to {
+                    kind = ProjectKind.MOD
+                    showCategories = false
+                },
+                Triple("Shader Packs", "Enhance visuals with Iris, BSL, Complementary & more", pro.cslauncher.app.R.drawable.ic_lightbulb) to {
+                    kind = ProjectKind.SHADER
+                    showCategories = false
+                },
+                Triple("Resource Packs", "Transform block textures, models, fonts and UI sounds", pro.cslauncher.app.R.drawable.ic_format_paint_outlined) to {
+                    kind = ProjectKind.RESOURCE_PACK
+                    showCategories = false
+                },
+                Triple("Game Versions", "Install official releases, snapshots & loaders", pro.cslauncher.app.R.drawable.ic_sports_esports_outlined) to {
+                    onOpen(Overlay.OptiFine(profile?.id))
+                },
+                Triple("Worlds & Saves", "Manage local saves, backups and custom maps", pro.cslauncher.app.R.drawable.ic_public) to {
+                    onOpen(Overlay.Content(ContentSection.WORLDS))
+                }
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "DOWNLOAD CATEGORIES",
+                    color = Color(0xFFAAAAAA),
+                    fontFamily = Monocraft,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
+                categories.forEach { (cat, action) ->
+                    val (title, subtitle, iconRes) = cat
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .background(Color(0xFF1E1E20))
+                            .border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333)), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                            .clickable(onClick = action)
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF28282B))
+                                    .border(androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF444444)), androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    painter = androidx.compose.ui.res.painterResource(iconRes),
+                                    contentDescription = title,
+                                    tint = Color(0xFF55FF55),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = title,
+                                    color = Color.White,
+                                    fontFamily = Monocraft,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontSize = 13.5.sp
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = subtitle,
+                                    color = Color(0xFF888888),
+                                    fontFamily = Monocraft,
+                                    fontSize = 10.5.sp
+                                )
+                            }
+
+                            Spacer(Modifier.width(6.dp))
+
+                            androidx.compose.material3.Icon(
+                                painter = androidx.compose.ui.res.painterResource(pro.cslauncher.app.R.drawable.ic_keyboard_arrow_right),
+                                contentDescription = null,
+                                tint = Color(0xFF666666),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            return@Column
         }
         // ---------------------------------------------- kind tabs + search (one row; icon-only tabs on narrow phones)
         BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp)) {
